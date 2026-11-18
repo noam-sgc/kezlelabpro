@@ -14,6 +14,7 @@ Simulador de bancada de eletrônica embarcada que roda 100% no navegador (HTML +
 | **Catálogo** | 215 → 600+ peças com modelos elétricos e bibliotecas Python/C++ genéricas. |
 | **Estúdio** | Planejador: pinagem por função, elétrica (VCC mín/máx, consumo), dimensões em mm, tela/touch, campos de leitura, API de código e validação. |
 | **Projetos** | Salvar, atualizar (ou salvar como novo), renomear, duplicar, exportar/importar `.json`. |
+| **Sala Global (WebRTC)** | Aba 📡: conexão P2P por DataChannel (STUN do Google), chat, **MQTT/ESP-NOW/rádio entre bancadas de pessoas diferentes** (`umqtt`, `espnow`, `PubSubClient`, `mqtt` em JS/Lua) e transmissão ao vivo da bancada (peças, LEDs, motores, telas, serial) para espectadores. Sinalização por `api/signal.js` (só ofertas/ICE) ou **manual por copiar/colar**, sem servidor. |
 | **Galeria Global** | Backend real (`api/`): publicar, atualizar, despublicar, curtir, comentar, busca e filtros. |
 
 ## Galeria Global — configuração (obrigatória para persistir)
@@ -42,8 +43,15 @@ js/lang4.js       Lua e BASIC (interpretadores próprios)
 js/catalog.js     +400 peças
 js/studio.js      Estúdio v2
 js/online.js      projetos + galeria global
+js/rtc.js         WebRTC: sala global, chat, MQTT P2P, transmissão ao vivo
 api/*.js          funções serverless (Vercel)
 ```
+
+## WebRTC — notas
+
+- Os dados vão direto entre navegadores; o servidor só guarda ofertas/ICE por 10 min (`api/signal.js`, precisa de Redis para funcionar entre instâncias serverless).
+- Usa STUN público. Redes com NAT simétrico/corporativo podem exigir um servidor **TURN** (não incluído): nesses casos a conexão não fecha.
+- Não há criptografia/autenticação além da do DTLS do WebRTC: qualquer pessoa com o código da sala entra. Use códigos longos.
 
 ## Limites honestos
 

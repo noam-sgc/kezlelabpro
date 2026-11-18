@@ -302,6 +302,7 @@ RUNNERS.js = async function(src){
   });
   const con = { log: (...a) => HAL.write(a.map(x => typeof x === 'object' ? JSON.stringify(x) : String(x)).join(' ') + '\n'), error: (...a) => HAL.write('ERR ' + a.join(' ') + '\n'), warn: (...a) => HAL.write(a.join(' ') + '\n'), info: (...a) => HAL.write(a.join(' ') + '\n') };
   api.console = con;
+  Object.assign(api, window.KEZLE_JS_API || {});
   const names = Object.keys(api);
   const AF = Object.getPrototypeOf(async function(){}).constructor;
   const fn = new AF(...names, '"use strict";\n' + src);

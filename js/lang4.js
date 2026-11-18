@@ -454,6 +454,7 @@ function makeLuaEnv(){
   G.set('tft', lazy(gfxLazy)); G.set('oled', G.get('tft')); G.set('display', G.get('tft'));
   G.set('touch', lazy(() => { const t = HAL.touch(); if(!t) return { get: () => [null], touched: () => false }; return Object.assign({}, t, { get: () => { const p = t.touched() ? t.get_point() : null; return p ? multi(p.x, p.y) : null; }, count: () => t.getTouchCount(), gesture: () => t.gesture() }); }));
   G.set('button', lazy(() => ({ pressed: n => HAL.button(n).isPressed() })));
+  if(window.KEZLE_LUA_HOOK) window.KEZLE_LUA_HOOK(G, { mkLib, LuaTable });
   return G;
 }
 async function runLua(src){

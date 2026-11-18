@@ -1112,7 +1112,7 @@ function applyPhysics(dt){
 /* ---------- laço de simulação ---------- */
 let lastT = performance.now(), scheduled = false, running = false;
 function stepNow(forceDt){
-  if(running) return;
+  if(running || CIR.frozen) return;
   running = true;
   try {
     const now = performance.now();
@@ -1177,6 +1177,10 @@ window.refreshPower = function(){
   CIR.solveNow();
   if(typeof renderHwCheck === 'function') renderHwCheck();
 };
+
+/* estado de energia válido desde o carregamento (antes era null => tudo parecia energizado) */
+POWER = { powered: id => { const p = BENCH.parts.find(x => x.id === id); return p ? CIR.powered(p) : false; } };
+CONN = connectivity();
 
 /* ---------- leitura de pinos pelo código ---------- */
 window.readADC = function(id){

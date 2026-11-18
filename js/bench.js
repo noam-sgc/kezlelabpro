@@ -44,6 +44,9 @@ css.textContent = `
 `;
 document.head.appendChild(css);
 
+/* sem fotos em assets/parts/ (não existem): usa sempre a arte vetorial, já limpa e alinhada aos pinos */
+window.photoUrl = d => (d && d.img) ? d.img : null;
+
 /* ---------- geometria da protoboard (passo 8 px = 2,54 mm) ---------- */
 window.boardLayout = function(def){
   const rows = def.kind === 'bb' ? 63 : (def.kind === 'b400' ? 30 : 17);
@@ -147,6 +150,11 @@ function rawOffsets(inst){
     for(let i = 0; i < n - rows; i++) arr.push({ x: d.w - 8, y: 14 + i * 8 });
     return arr;
   }
+  if(n === 2 && (d.kind === 'res' || d.kind === 'cap' || d.kind === 'd' || d.id2 === 'inductor' || d.id2 === 'fuse')){
+    const sp = Math.max(8, Math.floor((d.w - 10) / 8) * 8), x0 = Math.round((d.w - sp) / 2);
+    return [{ x: x0, y: Math.round(d.h / 2) }, { x: x0 + sp, y: Math.round(d.h / 2) }];
+  }
+  if(n === 2 && d.cat === 'power' && d.kind === 'b9') return [{ x: d.w / 2 - 8, y: 5 }, { x: d.w / 2 + 8, y: 5 }];
   // linha de pinos na borda inferior, passo 8 px, centralizada
   const per = Math.min(n, Math.max(2, Math.floor((d.w - 8) / 8) + 1));
   const rowsN = Math.ceil(n / per);
@@ -199,6 +207,7 @@ window.postPart = function(inst, div){
   const wrap = document.createElement('div');
   wrap.className = 'rotWrap';
   wrap.style.cssText = `left:${(box.w - d.w) / 2}px;top:${(box.h - d.h) / 2}px;width:${d.w}px;height:${d.h}px;transform:rotate(${rot * 90}deg)`;
+  cleanArt(inst, div);
   [...div.children].forEach(ch => { if(!ch.classList.contains('pin')) wrap.appendChild(ch); });
   div.insertBefore(wrap, div.firstChild);
   inst.wrap = wrap;
@@ -207,6 +216,39 @@ window.postPart = function(inst, div){
   buildControls(inst, wrap);
 };
 
+/* A arte (SVG) desenhava "furos/pernas" dourados em posições próprias — que não coincidiam com os pinos reais.
+   Remove essas decorações; os pinos dourados (div .pin) passam a ser a ÚNICA representação, nas posições exatas. */
+function cleanArt(inst, div){
+  const d = inst.def;
+  const svg = div.querySelector('.partBody svg');
+  if(!svg || d.cat === 'board') return;
+  svg.querySelectorAll('circle').forEach(c => {
+    const col = (c.getAttribute('fill') || '') + ' ' + (c.getAttribute('stroke') || '');
+    if(/#d4af37|#c9a227/i.test(col) && +c.getAttribute('r') <= 3.3) c.remove();
+  });
+  if(d.kind !== 'res') svg.querySelectorAll('line').forEach(l => { if(/#d4af37/i.test(l.getAttribute('stroke') || '')) l.remove(); });
+  // rótulos de pino (serigrafia) nas placas de MCU, exatamente ao lado de cada pino
+  if(d.cat === 'mcu' && d.w >= 90 && !d.pinLayout){
+    const offs = rawOffsets(inst), names = d.pinNames || [];
+    const NS2 = 'http://www.w3.org/2000/svg';
+    // blocos pretos de header da arte tinham outro espaçamento: refaz um por pino, centrado no pino real
+    svg.querySelectorAll('rect').forEach(r => { if(r.getAttribute('fill') === '#111' && +r.getAttribute('width') === 8 && +r.getAttribute('height') === 8) r.remove(); });
+    offs.forEach(o => {
+      const r = document.createElementNS(NS2, 'rect');
+      r.setAttribute('x', o.x - 4); r.setAttribute('y', o.y - 4); r.setAttribute('width', 8); r.setAttribute('height', 8); r.setAttribute('rx', 1); r.setAttribute('fill', '#111'); r.setAttribute('stroke', '#333');
+      svg.insertBefore(r, svg.children[1] || null);
+    });
+    offs.forEach((o, i) => {
+      const t = document.createElementNS(NS2, 'text');
+      const left = o.x < d.w / 2;
+      t.setAttribute('x', left ? o.x + 6 : o.x - 6); t.setAttribute('y', o.y + 1.6);
+      t.setAttribute('font-size', '4.6'); t.setAttribute('font-family', 'monospace'); t.setAttribute('fill', '#cfe8ff'); t.setAttribute('opacity', '.85');
+      t.setAttribute('text-anchor', left ? 'start' : 'end');
+      t.textContent = (names[i] || '').slice(0, 6);
+      svg.appendChild(t);
+    });
+  }
+}
 function stop(e){ e.stopPropagation(); }
 function ctl(wrap, css, cls){
   const c = document.createElement('div');
