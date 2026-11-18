@@ -1112,7 +1112,7 @@ function applyPhysics(dt){
 /* ---------- laço de simulação ---------- */
 let lastT = performance.now(), scheduled = false, running = false;
 function stepNow(forceDt){
-  if(running) return;
+  if(running || CIR.frozen) return;
   running = true;
   try {
     const now = performance.now();

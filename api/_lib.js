@@ -28,6 +28,8 @@ const store = {
   async scard(key){ if(persistent) return +(await redis(['SCARD', key])) || 0; const s = mem.s.get(key); return s ? s.size : 0; },
   async rpush(key, v){ if(persistent) return redis(['RPUSH', key, v]); if(!mem.l.has(key)) mem.l.set(key, []); mem.l.get(key).push(v); },
   async lrange(key, a, b){ if(persistent) return (await redis(['LRANGE', key, a, b])) || []; const l = mem.l.get(key) || []; return l.slice(a, b < 0 ? undefined : b + 1); },
+  async expire(key, sec){ if(persistent) return redis(['EXPIRE', key, sec]); const m = mem.exp || (mem.exp = new Map()); m.set(key, Date.now() + sec * 1000); },
+  async llen(key){ if(persistent) return +(await redis(['LLEN', key])) || 0; const m = mem.exp; if(m && m.get(key) && m.get(key) < Date.now()){ mem.l.delete(key); } return (mem.l.get(key) || []).length; },
   async del(key){ if(persistent) return redis(['DEL', key]); mem.h.delete(key); mem.s.delete(key); mem.l.delete(key); }
 };
 

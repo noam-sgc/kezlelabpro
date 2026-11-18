@@ -148,7 +148,7 @@ function cApi(src){
     EEPROM: { begin: () => 0, read: () => 0, write: () => 0, commit: () => 0, put: () => 0, get: () => 0, update: () => 0 },
     WiFi: { begin: () => 0, status: () => 3, localIP: () => '192.168.4.22', mode: () => 0, disconnect: () => 0, RSSI: () => -52, SSID: () => 'KezleLab', softAP: () => true }, WL_CONNECTED: 3,
     ESP: { restart: () => { RUN.on = false; }, getFreeHeap: () => 180000 }, esp_random: () => Math.floor(Math.random() * 4294967295),
-    __idiv: (a, b) => { if(b === 0) throw new Error('divisão inteira por zero'); return Math.trunc(a / b); }, __int: v => Math.trunc(+v) || 0, __sizeof: x => Array.isArray(x) ? x.length : (typeof x === 'string' ? x.length + 1 : 1),
+    __idiv: (a, b) => { if(b === 0) throw new Error('divisão inteira por zero'); return Math.trunc(a / b); }, __int: v => Math.trunc(+v) || 0, __chr: v => typeof v === 'number' ? String.fromCharCode(v) : v, __sizeof: x => Array.isArray(x) ? x.length : (typeof x === 'string' ? x.length + 1 : 1),
     __R: (get, set) => ({ get, set, get v(){ return get(); }, set v(x){ set(x); } }), __D: p => (p && p.get) ? p.get() : p,
     __cout: (...a) => { HAL.write(a.map(x => numFmt(x)).join('')); }, endl: '\n', cout: null,
     printf: (f, ...a) => { HAL.write(HAL.printf(f, ...a)); return 0; }, puts: s => { HAL.write(s + '\n'); return 0; }, putchar: c => { HAL.write(String.fromCharCode(c)); return c; }, sprintf: (b, f, ...a) => HAL.printf(f, ...a), snprintf: (b, n, f, ...a) => HAL.printf(f, ...a),
@@ -324,6 +324,11 @@ function cTranspile(src, opts){
       if(v === '(' && nx && nx.t === 'id' && !prevIsValue(j)){
         // cast?
         let k = j + 1, ok = false, isInt = false, isFlt = false;
+        if(tk[j + 1].v === 'char' && tk[j + 2] && tk[j + 2].v === ')' && tk[j + 3] && tk[j + 3].t === 'id'){
+          let e = j + 4; // id ( [..] | (..) | .id )*
+          for(;;){ if(tk[e] && (tk[e].v === '[' || tk[e].v === '(')){ const o = tk[e].v, cl = o === '[' ? ']' : ')'; let d = 0; for(; e < L; e++){ if(tk[e].v === o) d++; if(tk[e].v === cl){ d--; if(!d){ e++; break; } } } } else if(tk[e] && tk[e].v === '.' && tk[e + 1] && tk[e + 1].t === 'id') e += 2; else break; }
+          out.push('__chr(' + conv(tk.slice(j + 3, e)) + ')'); j = e - 1; continue;
+        }
         while(tk[k] && tk[k].t === 'id' && (T_BASE.has(tk[k].v) || T_QUAL.has(tk[k].v))){ if(INTLIKE.has(tk[k].v)) isInt = true; if(FLOATLIKE.has(tk[k].v)) isFlt = true; k++; ok = true; }
         while(tk[k] && tk[k].v === '*') k++;
         if(ok && tk[k] && tk[k].v === ')' && tk[k + 1] && (tk[k + 1].t === 'id' || tk[k + 1].t === 'num' || tk[k + 1].v === '(' || tk[k + 1].v === '-' || tk[k + 1].t === 'chr')){
