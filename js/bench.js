@@ -35,6 +35,7 @@ css.textContent = `
 .stick-top{position:absolute;border-radius:50%;background:radial-gradient(circle at 35% 30%,#666,#111);cursor:grab;box-shadow:0 2px 3px #000a}
 .keycell{position:absolute;background:linear-gradient(#e5e7eb,#9ca3af);color:#111;font:bold 9px var(--mono);display:flex;align-items:center;justify-content:center;border-radius:3px;cursor:pointer;border:1px solid #4b5563;box-shadow:0 2px 0 #4b5563;user-select:none}
 .keycell.down{transform:translateY(2px);box-shadow:none;background:#facc15}
+.rdTag{position:absolute;left:50%;bottom:-17px;transform:translateX(-50%);border:1px solid var(--line);color:var(--ac2);font:10px var(--mono);padding:0 6px;border-radius:9px;white-space:nowrap;z-index:15;pointer-events:none}
 .burnTag{position:absolute;left:50%;top:-22px;transform:translateX(-50%);background:#450a0a;border:1px solid #f87171;color:#fecaca;font:10px var(--mono);padding:1px 7px;border-radius:10px;z-index:20;white-space:nowrap}
 #probe{position:absolute;z-index:30;pointer-events:none;background:#031b12;border:1px solid #34d399;color:#6ee7b7;font:11px var(--mono);padding:3px 9px;border-radius:10px;display:none;white-space:nowrap}
 .elTable{width:100%;font:11px var(--mono);border-collapse:collapse;margin-top:6px}
@@ -136,7 +137,7 @@ function rawOffsets(inst){
   if(d.kind === 'relay_mod' || d.cat === 'board') return _origPinOffsets(inst);
   const n = (d.pinNames && d.pinNames.length) || d.pins || 2;
   const arr = [];
-  if(d.cat === 'mcu'){
+  if(d.cat === 'mcu' && !d.pinLayout){
     const rows = Math.ceil(n / 2);
     const need = 8 * Math.ceil((d.w - 16) / 8) + 16;
     if(d.w !== need) d.w = need;
@@ -520,6 +521,33 @@ window.drawWires = function(){
         document.addEventListener('pointermove', mv); document.addEventListener('pointerup', up);
       });
       g.appendChild(hd);
+      // alças nas pontas: arraste para outro pino para religar o fio
+      ['a', 'b'].forEach(which => {
+        const q = pinPos(w[which].p, w[which].i);
+        const eh = mk('circle', { cx: q.x, cy: q.y, r: 6.5, fill: '#fbbf24', 'fill-opacity': .85, stroke: '#78350f', 'stroke-width': 2, class: 'handle' });
+        eh.addEventListener('pointerdown', e => {
+          e.stopPropagation(); e.preventDefault();
+          eh.setPointerCapture(e.pointerId);
+          eh.style.pointerEvents = 'none';
+          const r0 = benchEl.getBoundingClientRect();
+          const ghost = mk('circle', { r: 7, fill: '#fbbf24', stroke: '#000', 'stroke-width': 1.5 });
+          wireLayer.appendChild(ghost);
+          const mv = ev => { ghost.setAttribute('cx', ev.clientX - r0.left); ghost.setAttribute('cy', ev.clientY - r0.top); };
+          const up = ev => {
+            document.removeEventListener('pointermove', mv); document.removeEventListener('pointerup', up);
+            ghost.remove();
+            const el = document.elementFromPoint(ev.clientX, ev.clientY);
+            const pd = el && el.closest && el.closest('.pin');
+            if(pd){
+              const pe = pd.closest('.part'); const tgt = BENCH.parts.find(pp => pp.id === pe.dataset.pid);
+              if(tgt){ w[which] = { p: tgt.id, i: +pd.dataset.i }; scheduleSaveBench(); toast('🔗 Fio religado em ' + tgt.def.n + ' · ' + pd.dataset.nm, 'ok'); }
+            }
+            drawWires(); renderProps();
+          };
+          document.addEventListener('pointermove', mv); document.addEventListener('pointerup', up);
+        });
+        g.appendChild(eh);
+      });
     }
     wireLayer.appendChild(g);
   }
@@ -579,12 +607,26 @@ window.refreshAllVisuals = function(){
     }
     if(d.kind === 'motor' || d.kind === 'fan'){
       const r = p.el.querySelector('.rotG');
-      if(r){ r.style.transformOrigin = '50% 50%'; r.style.animation = st.on ? `rot ${Math.max(0.12, 0.7 / Math.max(0.1, st.speed || 0.3))}s linear infinite` : 'none'; }
+      if(r){ r.style.transformOrigin = '50% 50%'; const rpm = Math.abs(st.rpm || 0); const per = rpm > 1 ? Math.max(0.09, 60 / Math.min(rpm, 700)) : 0; r.style.animation = (st.on && per) ? `rot ${per}s linear infinite ${(st.rpm || 0) < 0 ? 'reverse' : 'normal'}` : 'none'; }
     }
     if(d.kind === 'servo'){
       const hn = p.el.querySelector('.horn');
       if(hn) hn.style.transform = `rotate(${(st.angle != null ? st.angle : 90) - 90}deg)`;
     }
+    // etiqueta de leitura ao vivo (corrente / RPM / brilho)
+    let rd = p.el.querySelector('.rdTag');
+    let txt = '';
+    if(SIM.on && !st.burnt){
+      if(d.kind === 'led') txt = ((st.current || 0) * 1000).toFixed(1) + ' mA';
+      else if(d.kind === 'motor' || d.kind === 'fan') txt = Math.round(Math.abs(st.rpm || 0)) + ' rpm' + ((st.rpm || 0) < 0 ? ' ↺' : '');
+      else if(d.kind === 'servo' && st.servoPow) txt = Math.round(st.angle != null ? st.angle : 90) + '°';
+    }
+    if(txt){
+      if(!rd){ rd = document.createElement('div'); rd.className = 'rdTag'; p.el.appendChild(rd); }
+      rd.textContent = txt;
+      rd.style.background = st.heat > 0.4 ? '#7c2d12' : '#0a1322ee';
+    } else if(rd) rd.remove();
+    p.el.style.filter = st.heat > 0.3 ? `drop-shadow(0 0 ${6 + 10 * st.heat}px rgba(255,${Math.round(120 - 90 * st.heat)},0,${0.4 + 0.5 * st.heat}))` : '';
     const bt = p.el.querySelector('.burnTag');
     if(st.burnt && !bt){ const t = document.createElement('div'); t.className = 'burnTag'; t.textContent = '🔥 queimado'; p.el.appendChild(t); }
     if(!st.burnt && bt) bt.remove();
@@ -639,6 +681,10 @@ function updateLive(){
   for(let i = 0; i < Math.min(offs.length, 16); i++) h += `<tr><td>${names[i] || 'P' + i}</td><td>${CIRCUIT.pinV(inst, i).toFixed(3)} V</td></tr>`;
   const cs = inst.cs || { I: {} };
   for(const k in cs.I) if(Math.abs(cs.I[k]) > 1e-9 && !/^(z|pd|pu|io|leak)/.test(k)) h += `<tr><td>I(${k})</td><td>${fmtI(cs.I[k])}</td></tr>`;
+  const stt = inst.state;
+  if(stt.rpm != null && (inst.def.kind === 'motor' || inst.def.kind === 'fan')) h += `<tr><td>rotação</td><td>${Math.round(stt.rpm)} rpm</td></tr><tr><td>tensão</td><td>${(stt.v || 0).toFixed(2)} V</td></tr>`;
+  if(inst.def.kind === 'led') h += `<tr><td>brilho</td><td>${Math.round(Math.min(1, stt.brightness || 0) * 100)} %</td></tr>`;
+  if(stt.heat > 0.02) h += `<tr><td>aquecimento</td><td style="color:${stt.heat > 0.6 ? '#f87171' : '#fbbf24'}">${Math.round(stt.heat * 100)} %</td></tr>`;
   if(inst.def.cat === 'mcu') h += `<tr><td>estado</td><td>${(cs.note) || (inst.state.mcuPow ? 'ligado' : 'sem energia')}</td></tr>`;
   h += '</table>';
   el.innerHTML = h;

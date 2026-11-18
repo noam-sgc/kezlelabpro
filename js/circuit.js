@@ -241,6 +241,40 @@ function analogFrac(inst){
   return null;
 }
 
+
+/* ---------- motores: modelo elétrico + mecânico (RPM, força contra-eletromotriz) ---------- */
+const MOTORS = {
+  dcmotor:        { Vn: 6,   rpm: 9000,  Istall: 1.2,  I0: 0.12, tau: 0.12 },
+  dcmotor_encoder:{ Vn: 6,   rpm: 150,   Istall: 0.9,  I0: 0.08, tau: 0.2 },
+  dc_gearmotor:   { Vn: 6,   rpm: 100,   Istall: 1.0,  I0: 0.07, tau: 0.25 },
+  vibro:          { Vn: 3.3, rpm: 12000, Istall: 0.12, I0: 0.06, tau: 0.08 },
+  fan5v:          { Vn: 5,   rpm: 4500,  Istall: 0.35, I0: 0.14, tau: 0.35 }
+};
+function motorSpec(d){
+  if(d._mot) return d._mot;
+  const b = MOTORS[d.id] || { Vn: d.vcc || 6, rpm: d.kind === 'fan' ? 4000 : 8000, Istall: 1, I0: 0.1, tau: 0.15 };
+  const Ra = b.Vn / b.Istall;
+  const Ke = (b.Vn - b.I0 * Ra) / b.rpm; // V por rpm
+  return d._mot = { Vn: b.Vn, rpmNL: b.rpm, Ra, Ke, I0: b.I0, Irated: b.Istall * 0.45, tau: b.tau, Vstart: b.I0 * Ra * 1.4 };
+}
+CIR.motorSpec = motorSpec;
+function burn(inst, why){
+  const st = inst.state;
+  if(st.burnt) return;
+  st.burnt = true; st.on = false; st.brightness = 0; st.rpm = 0; st.heat = 1;
+  serialOut('🔥 ' + inst.def.n + ' queimou — ' + why, 'err');
+  toast('🔥 ' + inst.def.n + ' queimou', 'err');
+}
+/* aquecimento: ratio>1 aquece, <1 esfria; ao chegar em 100% queima */
+function thermal(inst, ratio, dt, k, why){
+  const st = inst.state;
+  st.heat = st.heat || 0;
+  if(ratio > 1) st.heat += (ratio - 1) * (k || 0.6) * dt;
+  else st.heat = Math.max(0, st.heat - dt * 0.2);
+  st.heat = Math.min(st.heat, 1.2);
+  if(st.heat >= 1) burn(inst, why);
+}
+
 /* ---------- construção da lista de elementos ---------- */
 function buildElements(net, dt){
   const find = net.find;
@@ -285,6 +319,7 @@ function buildElements(net, dt){
       st.mcuPow = powered;
       inst.cs.note = powered ? (SIM.vusb ? 'USB virtual 5V' : 'alimentação externa') : 'sem energia';
       if(!powered) continue;
+      if(!SIM.vusb){ if(fedVin && k5) els.push(res(k5, gKey, 5 / 0.09, inst, 'load')); else if(k3) els.push(res(k3, gKey, 3.3 / 0.07, inst, 'load')); }
       if(SIM.vusb){
         if(k5) els.push(thev(k5, gKey, 5, 0.3, inst, '5V'));
         if(k3) els.push(thev(k3, gKey, 3.3, 1.0, inst, '3V3'));
@@ -507,9 +542,10 @@ function buildElements(net, dt){
       continue;
     }
     if(d.kind === 'motor' || d.kind === 'fan'){
-      const rs = R[id] = R[id] || { w: 0 };
-      const Vn = d.vcc || 6;
-      els.push(res(A(0), A(1), Vn / (d.kind === 'fan' ? 0.15 : 0.45) * 0.5, inst, 'M'));
+      const M = motorSpec(d);
+      const rs = R[id] = R[id] || { rpm: 0 };
+      els.push(thev(A(0), A(1), M.Ke * rs.rpm, M.Ra, inst, 'M'));
+      if(d.pins >= 4){ els.push(res(A(2), A(3), 1e8, inst, 'enc')); }
       continue;
     }
     if(d.kind === 'relay' && d.id !== 'peltier' && d.id !== 'solenoid'){
@@ -864,15 +900,16 @@ function applyPhysics(dt){
       CIR.optoI[inst.id] = Math.min(Il * 1.0, 0.05);
       st.brightness = Math.min(1, Il / 0.01);
     }
-    // LED
+    // LED: brilho perceptual (curva ~ I^0.6), queima por aquecimento
     if(d.kind === 'led'){
       const I = Math.max(0, cs.I.LED || 0);
       st.current = I;
       const maxI = +inst.props.imax || 0.03;
-      st.brightness = clamp(I / 0.015, 0, 1.2);
-      st.on = I > 0.0002;
-      if(I > maxI * 3 && !st.burnt){ st.burnt = true; st.on = false; st.brightness = 0; serialOut('🔥 LED queimou! ' + (I * 1000).toFixed(0) + ' mA sem resistor limitador', 'err'); toast('🔥 LED queimou — falta resistor limitador', 'err'); }
-      else if(I > maxI * 1.4) st.overdrive = true; else st.overdrive = false;
+      st.brightness = clamp(Math.pow(I / 0.02, 0.6), 0, 1.3);
+      st.on = I > 2e-5;
+      thermal(inst, I / maxI, dt, 2.5, 'corrente de ' + (I * 1000).toFixed(0) + ' mA (máx ' + (maxI * 1000).toFixed(0) + ' mA) — falta resistor limitador');
+      if(st.burnt){ st.on = false; st.brightness = 0; }
+      st.overdrive = I > maxI * 1.1;
     }
     if(d.kind === 'rgb'){
       const ch = [0, 1, 2].map(i => Math.max(0, cs.I['LED' + i] || 0));
@@ -885,12 +922,26 @@ function applyPhysics(dt){
       const gp = CIR.gpioOfPin(inst, 0);
       st.freq = gp != null && PINS[gp] ? PINS[gp].freq : null;
       st.v = V;
+      if(V > 2.0) thermal(inst, Math.abs(cs.I.load || 0) / 0.09, dt, 0.5, 'sobrecorrente no buzzer');
     }
     if(d.kind === 'motor' || d.kind === 'fan'){
-      const V = Math.abs(cs.Vd.M || 0), Vn = d.vcc || 6;
-      st.on = V > 0.25 * Vn;
-      st.speed = clamp(V / Vn, 0, 1.6);
+      const M = motorSpec(d);
+      const rs = R[inst.id] = R[inst.id] || { rpm: 0 };
+      const V = cs.Vd.M != null ? cs.Vd.M : 0;
+      const I = cs.I.M || 0;
+      const sgn = V >= 0 ? 1 : -1;
+      const va = Math.abs(V);
+      const target = va > M.Vstart ? sgn * Math.max(0, (va - M.Ra * M.I0) / M.Ke) : 0;
+      const a = 1 - Math.exp(-dt / M.tau);
+      rs.rpm += (target - rs.rpm) * a;
+      if(Math.abs(rs.rpm) < 1) rs.rpm = 0;
+      st.rpm = rs.rpm; st.v = V; st.current = I;
+      st.on = Math.abs(rs.rpm) > 5;
+      st.speed = clamp(Math.abs(rs.rpm) / M.rpmNL, 0, 2);
       st.duty = Math.max(0.15, st.speed);
+      const stall = Math.abs(I) > M.Irated * 2.2 && Math.abs(rs.rpm) < M.rpmNL * 0.05 && va > M.Vstart;
+      thermal(inst, Math.max(Math.abs(I) / M.Irated, va / (1.6 * M.Vn)), dt, stall ? 0.9 : 0.35, stall ? 'rotor travado/sobrecorrente de ' + Math.abs(I).toFixed(2) + ' A' : 'sobrecarga: ' + va.toFixed(1) + ' V / ' + Math.abs(I).toFixed(2) + ' A');
+      if(st.burnt){ rs.rpm = 0; st.rpm = 0; st.on = false; }
     }
     if(d.kind === 'servo'){
       const vs = CIR.supply(inst);
@@ -911,8 +962,8 @@ function applyPhysics(dt){
       inst.props.currentFlow = I * 1000; inst.props.voltageDrop = V;
       const P = I * V;
       st.power = P;
-      st.hot = P > (+inst.props.watt || 0.25);
-      if(P > (+inst.props.watt || 0.25) * 4 && !st.burnt){ st.burnt = true; serialOut('🔥 Resistor queimou: ' + (P * 1000).toFixed(0) + ' mW', 'err'); }
+      st.hot = P > (+inst.props.watt || 0.25) * 0.8;
+      thermal(inst, P / (+inst.props.watt || 0.25), dt, 0.8, 'dissipou ' + (P * 1000).toFixed(0) + ' mW (limite ' + ((+inst.props.watt || 0.25) * 1000).toFixed(0) + ' mW)');
     }
     if(d.id === 'cap'){ inst.props.chargeLevel = clamp(Math.abs(cs.Vd.cap || 0) / 5 * 100, 0, 100); }
     // sobretensão em módulos
