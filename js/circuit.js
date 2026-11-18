@@ -105,6 +105,7 @@ function buildNets(){
     }
   }
   for(const w of BENCH.wires) uni(w.a.p + ':' + w.a.i, w.b.p + ':' + w.b.i);
+  const counts = new Map();
   // pinos internos equivalentes dos MCUs (GND, 3V3, 5V)
   for(const m of BENCH.parts){
     if(m.def.cat !== 'mcu') continue;
@@ -118,7 +119,9 @@ function buildNets(){
       if(c === 'v5' && !/^VIN$/i.test(nme) || (c === 'v5' && !v50)){ if(v50) uni(v50, key); else v50 = key; }
     });
   }
-  return { find, plugs };
+  for(const p of BENCH.parts){ if(p.def.cat === 'board') continue; const n = pinOffsets(p).length; for(let i = 0; i < n; i++){ const r = find(p.id + ':' + i); counts.set(r, (counts.get(r) || 0) + 1); } }
+  for(const w of BENCH.wires){ const r = find(w.a.p + ':' + w.a.i); counts.set(r, (counts.get(r) || 0) + 1); }
+  return { find, plugs, counts };
 }
 CIR.buildNets = buildNets;
 
@@ -345,14 +348,14 @@ function buildElements(net, dt){
     /* ===== FONTES ===== */
     if(d.cat === 'power'){
       const kd = d.kind;
-      const pp = findPin(inst, /^(\+|B\+|BAT\+|USB\+|IN\+)$/), pm = findPin(inst, /^(−|-|B-|BAT-|USB-|IN-)$/);
-      if(kd in SRC && pp >= 0 && pm >= 0){
-        let [V, Rint] = SRC[kd];
+      const pp = findPin(inst, /^(\+|B\+|BAT\+|USB\+|IN\+|VBUS)$/), pm = findPin(inst, /^(−|-|B-|BAT-|USB-|IN-|GND)$/);
+      if((kd in SRC || d.srcV) && pp >= 0 && pm >= 0){
+        let [V, Rint] = d.srcV ? [d.adj ? (+p.vset || 5) : d.srcV, d.srcR || 0.2] : SRC[kd];
         if(p.drain) V *= (1 - clamp(+p.drain, 0, 0.5));
         els.push(thev(A(pp), A(pm), V, Rint, inst, 'src'));
         sources.push({ neg: A(pm) });
       } else if((kd === 'solar5' || kd === 'solar12') && pp >= 0){
-        const Voc = (kd === 'solar5' ? 6.0 : 21) * (0.15 + 0.85 * lightFrac()) * (+p.pct / 100 || 1);
+        const Voc = (d.solarV || (kd === 'solar5' ? 6.0 : 21)) * (0.15 + 0.85 * lightFrac()) * (+p.pct / 100 || 1);
         els.push(thev(A(pp), A(pm), Voc, kd === 'solar5' ? 6 : 12, inst, 'src'));
         sources.push({ neg: A(pm) });
       } else if(kd === 'scap'){
@@ -377,6 +380,13 @@ function buildElements(net, dt){
           els.push(res(A(outM), A(bm), 0.01, inst, 'gnd2'));
         }
         sources.push({ neg: A(bm) });
+      } else if(kd === 'buck'){
+        const ip = findPin(inst, /^IN\+$/), im = findPin(inst, /^IN-$/), op = findPin(inst, /^OUT\+$/), om = findPin(inst, /^OUT-$/);
+        const vin = pv(A(ip)) - pv(A(im)); const tgt = +p.vout || 5;
+        els.push(res(A(im), A(om), 0.01, inst, 'gnd'));
+        if(vin > tgt + 0.6) els.push(thev(A(op), A(om), tgt, 0.3, inst, 'buck'));
+        else if(vin > 3) els.push(thev(A(op), A(om), Math.max(0, vin - 0.6), 0.5, inst, 'buck'));
+        els.push(res(A(ip), A(im), 400, inst, 'iq'));
       } else if(kd === 'mt3608'){
         const ip = findPin(inst, /^IN\+$/), im = findPin(inst, /^IN-$/), op = findPin(inst, /^OUT\+$/), om = findPin(inst, /^OUT-$/);
         const vin = pv(A(ip)) - pv(A(im));
@@ -390,7 +400,7 @@ function buildElements(net, dt){
 
     /* ===== PASSIVOS ===== */
     if(d.kind === 'res'){ els.push(res(A(0), A(1), resistanceOf(inst), inst, 'R')); continue; }
-    if(d.kind === 'cap' && /^(cap|supercap)/.test(d.id) && d.id === 'cap'){
+    if(d.kind === 'cap' && (d.id === 'cap' || d.capModel)){
       const unit = p.capUnit || 'µF';
       const C = (+p.capVal || 100) * (unit === 'pF' ? 1e-12 : unit === 'nF' ? 1e-9 : unit === 'mF' ? 1e-3 : 1e-6);
       const rs = R[id] = R[id] || { v: 0 };
@@ -398,13 +408,13 @@ function buildElements(net, dt){
       els.push(res(A(0), A(1), 1e8, inst, 'leak'));
       continue;
     }
-    if(d.id === 'inductor_10uh'){
+    if(d.id === 'inductor_10uh' || d.id2 === 'inductor'){
       const rs = R[id] = R[id] || { i: 0 };
       els.push(indElem(A(0), A(1), (+p.L || 10) * 1e-6, dt, rs.i, inst, 'L'));
       els.push(res(A(0), A(1), 1e7, inst, 'leak'));
       continue;
     }
-    if(d.id === 'fuse'){
+    if(d.id === 'fuse' || d.id2 === 'fuse'){
       const rs = R[id] = R[id] || { blown: false };
       els.push(res(A(0), A(1), rs.blown ? 1e9 : 0.05, inst, 'fuse'));
       continue;
@@ -416,8 +426,10 @@ function buildElements(net, dt){
     if(d.id === 'crystal_16mhz'){ els.push(res(A(0), A(1), 1e9, inst, 'xtal')); continue; }
     if(d.kind === 'd'){
       const zener = /zener/.test(d.id);
-      const Vz = zener ? (parseFloat((d.n.match(/(\d+(?:\.\d+)?)V/) || [])[1]) || 5.1) : 0;
-      els.push(diodeElem(A(0), A(1), zener ? 1e-12 : 7.7e-9, zener ? 1.0 * VT * 1.6 : 1.8 * VT, inst, 'D', Vz));
+      const zm = d.id.match(/zener_(\d+)v(\d*)/);
+      const Vz = zener ? (zm ? parseFloat(zm[1] + '.' + (zm[2] || '0')) : 5.1) : 0;
+      if(d.vf){ const nv = 1.1 * VT; els.push(diodeElem(A(0), A(1), (d.ifm || 0.1) / Math.exp(d.vf / nv), nv, inst, 'D')); }
+      else els.push(diodeElem(A(0), A(1), zener ? 1e-12 : 7.7e-9, zener ? 1.0 * VT * 1.6 : 1.8 * VT, inst, 'D', Vz));
       continue;
     }
     if(d.kind === 'led'){
@@ -429,15 +441,22 @@ function buildElements(net, dt){
       for(const [i, vf] of base) els.push(ledElem(A(i), A(3), vf, inst, 'LED' + i));
       continue;
     }
+    if(d.kind === 'bridge'){
+      const nv = 1.8 * VT, Is = 7.7e-9;
+      els.push(diodeElem(A(0), A(2), Is, nv, inst, 'D1')); els.push(diodeElem(A(1), A(2), Is, nv, inst, 'D2'));
+      els.push(diodeElem(A(3), A(0), Is, nv, inst, 'D3')); els.push(diodeElem(A(3), A(1), Is, nv, inst, 'D4'));
+      continue;
+    }
     if(d.kind === 'trans' && d.id !== 'optocoupler' && d.id !== 'triac'){
       let type = 'npn', mos = false;
-      if(d.id === 'mosfet_n') mos = 'n'; else if(d.id === 'mosfet_p') mos = 'p';
+      if(d.tt){ if(d.tt === 'nmos') mos = 'n'; else if(d.tt === 'pmos') mos = 'p'; else type = d.tt; }
+      else if(d.id === 'mosfet_n') mos = 'n'; else if(d.id === 'mosfet_p') mos = 'p';
       else {
         const t = p.ttype || 'NPN (2N2222)';
         if(/MOSFET-N/.test(t)) mos = 'n'; else if(/MOSFET-P/.test(t)) mos = 'p'; else if(/PNP/.test(t)) type = 'pnp';
       }
-      if(mos) els.push(mosfet(A(0), A(1), A(2), mos === 'p', mos === 'p' ? -3.5 : (/irlz|logic|2n7000/i.test(p.ttype || '') ? 1.8 : 3.5), 2.0, inst, 'M'));
-      else els.push(bjt(A(0), A(1), A(2), type, type === 'pnp' ? 120 : 150, inst, 'Q'));
+      if(mos) els.push(mosfet(A(0), A(1), A(2), mos === 'p', d.vth != null ? d.vth : (mos === 'p' ? -3.5 : (/irlz|logic|2n7000/i.test(p.ttype || '') ? 1.8 : 3.5)), d.id === 'm_2n7000' || d.id === 'm_bs170' ? 0.15 : 2.0, inst, 'M'));
+      else els.push(bjt(A(0), A(1), A(2), type, d.beta || (type === 'pnp' ? 120 : 150), inst, 'Q'));
       continue;
     }
     if(d.id === 'optocoupler'){
@@ -457,16 +476,110 @@ function buildElements(net, dt){
       els.push(res(A(0), A(1), 100, inst, 'G'));
       continue;
     }
-    if(d.kind === 'ic' && d.id === 'lm7805'){
-      const vi = pv(A(0)) - pv(A(1));
-      els.push(res(A(1), A(1), 1, inst, 'x'));
-      const out = clamp(vi - 2, 0, 5);
-      if(vi > 7) els.push(thev(A(2), A(1), 5, 0.5, inst, 'reg'));
-      else if(vi > 2.5) els.push(thev(A(2), A(1), out, 0.5, inst, 'reg'));
-      els.push(res(A(0), A(1), 5000, inst, 'iq'));
+    if(d.kind === 'ic' && d.reg){
+      const vi = pv(A(0)) - pv(A(1)); const R2 = d.reg;
+      if(vi > R2.vin_min) els.push(thev(A(2), A(1), R2.vout, 0.5, inst, 'reg'));
+      else if(vi > R2.vout * 0.6) els.push(thev(A(2), A(1), Math.max(0, vi - (R2.vin_min - R2.vout)), 0.8, inst, 'reg'));
+      els.push(res(A(0), A(1), 4000, inst, 'iq'));
       continue;
     }
-
+    if(d.kind === 'lm317'){ // ADJ, OUT, IN : Vout = 1,25 (1 + R2/R1) — usa a tensão real do pino ADJ
+      const vo = pv(A(1)), va = pv(A(0));
+      if(pv(A(2)) - vo > 2.5 || vo < va + 1.0) els.push(thev(A(1), A(0), 1.25, 0.8, inst, 'reg'));
+      els.push(res(A(0), A(2), 1e6, inst, 'iq'));
+      continue;
+    }
+    if(d.kind === 'ne555'){
+      const rs = R[id] = R[id] || { q: 0 };
+      const vcc = pv(A(7)) - pv(A(0));
+      els.push(res(A(7), A(0), Math.max(vcc, 4.5) / 0.006, inst, 'iq'));
+      if(vcc > 4.2){
+        els.push(rs.q ? thev(A(2), A(0), vcc - 1.7, 60, inst, 'OUT') : thev(A(2), A(0), 0.1, 12, inst, 'OUT'));
+        els.push(res(A(6), A(0), rs.q ? 1e9 : 10, inst, 'DIS'));
+      } else { els.push(res(A(2), A(0), 1e9, inst, 'OUT')); els.push(res(A(6), A(0), 1e9, inst, 'DIS')); }
+      for(const k of [1, 3, 5]) els.push(res(A(k), A(0), 1e9, inst, 'hz' + k));
+      els.push(thev(A(4), A(0), vcc * 2 / 3, 5000, inst, 'ctrl')); els.push(res(A(7), A(3), 1e5, inst, 'rst'));
+      continue;
+    }
+    if(d.kind === 'opamp'){
+      const chans = d.pinNames.length === 14 ? [[0, 1, 2], [6, 5, 4], [7, 8, 9], [13, 12, 11]] : [[0, 1, 2], [6, 5, 4]];
+      const iv = d.pinNames.indexOf('VCC'), ig = d.pinNames.indexOf('GND');
+      els.push(res(A(iv), A(ig), 5 / 0.0007, inst, 'iq'));
+      chans.forEach(([o, m, pl], ci) => {
+        if(d.comp){
+          els.push(nonlin([A(o), A(m), A(pl), A(ig)], v => { const dv = v[2] - v[1]; const sink = 0.5 * (1 - Math.tanh(dv * 200)); const g = sink / 12 + 1e-9; const I = g * (v[0] - v[3]); return [I, 0, 0, -I]; }, inst, 'C' + ci));
+        } else {
+          els.push(nonlin([A(o), A(m), A(pl), A(iv), A(ig)], v => { const lo = v[4] + 0.05, hi = v[3] - 1.5; const tgt = lo + (hi - lo) * 0.5 * (1 + Math.tanh(1500 * (v[2] - v[1]) / Math.max(hi - lo, 1))); const I = (v[0] - tgt) / 80; return [I, 0, 0, 0, -I]; }, inst, 'A' + ci));
+        }
+        els.push(res(A(m), A(ig), 1e10, inst, 'im' + ci)); els.push(res(A(pl), A(ig), 1e10, inst, 'ip' + ci));
+      });
+      continue;
+    }
+    if(d.kind === 'mosmod'){
+      const sig = findPin(inst, /^SIG$/), ig = findPin(inst, /^GND$/), vm = findPin(inst, /^V−$/);
+      els.push(mosfet(A(sig), A(vm), A(ig), false, 3.0, 2.0, inst, 'M'));
+      els.push(res(A(findPin(inst, /^VCC$/)), A(ig), 5000, inst, 'iq'));
+      continue;
+    }
+    if(d.kind === 'uln'){
+      const ig = findPin(inst, /^GND$/);
+      for(let i = 1; i <= 7; i++){
+        const ii = findPin(inst, new RegExp('^IN' + i + '$')), oo = findPin(inst, new RegExp('^OUT' + i + '$'));
+        els.push(nonlin([A(ii), A(oo), A(ig)], v => { const ib = Math.max(0, (v[0] - v[2] - 1.4) / 2700); const ic = Math.min(ib * 1000, 0.5) * Math.tanh(Math.max(v[1] - v[2], 0) / 0.3); return [ib + 1e-10 * (v[0] - v[2]), ic + 1e-9 * (v[1] - v[2]), -(ib + ic) - 1e-10 * (v[0] - v[2]) - 1e-9 * (v[1] - v[2])]; }, inst, 'CH' + i));
+        const cm = findPin(inst, /^COM$/); if(cm >= 0) els.push(diodeElem(A(oo), A(cm), 1e-9, 1.8 * VT, inst, 'fly' + i));
+      }
+      continue;
+    }
+    if(d.kind === 'ssr'){
+      const rs = R[id] = R[id] || { on: false };
+      els.push(ledElem(A(0), A(1), 1.2, inst, 'IN'));
+      els.push(res(A(2), A(3), rs.on ? 0.1 : 1e9, inst, 'LOAD'));
+      continue;
+    }
+    if(d.kind === 'relayN'){
+      const n = d.channelsN, iv = findPin(inst, /^VCC$/), ig = findPin(inst, /^GND$/);
+      const rs = R[id] = R[id] || { on: [] };
+      const vs = pv(A(iv)) - pv(A(ig));
+      els.push(res(A(iv), A(ig), 5 / (0.015 + 0.07 * n), inst, 'coil'));
+      const lowActive = !p.activeHigh;
+      for(let c = 1; c <= n; c++){
+        const ii = findPin(inst, new RegExp('^IN' + c + '$')), com = findPin(inst, new RegExp('^COM' + c + '$')), no = findPin(inst, new RegExp('^NO' + c + '$')), nc = findPin(inst, new RegExp('^NC' + c + '$'));
+        const sig = pv(A(ii)) - pv(A(ig));
+        rs.on[c - 1] = vs > 3.2 && (lowActive ? sig < 1.0 : sig > 2.0);
+        // módulos reais têm entrada ativa-BAIXA com pull-up interno: o relé só fecha ao levar IN a 0 V
+        els.push(thev(A(ii), A(iv), vs, 2000, inst, 'in' + c));
+        els.push(res(A(com), A(no), rs.on[c - 1] ? 0.05 : 1e9, inst, 'NO' + c));
+        els.push(res(A(com), A(nc), rs.on[c - 1] ? 1e9 : 0.05, inst, 'NC' + c));
+      }
+      continue;
+    }
+    if(d.kind === 'hbridge'){
+      const ig = findPin(inst, /^GND$/), ivs = findPin(inst, /^(VS|VM|B\+)$/), ivc = findPin(inst, /^(V5|VCC|VDD)$/);
+      const vs = Math.max(0, pv(A(ivs)) - pv(A(ig)));
+      const vlog = d.vcc || 5, drop = d.drop || 0.5;
+      els.push(res(A(ivs), A(ig), Math.max(vs, 1) / 0.01, inst, 'iq'));
+      if(ivc >= 0) els.push(res(A(ivc), A(ig), 5 / 0.036, inst, 'logic'));
+      const floating = idx => net.counts && (net.counts.get(A(idx)) || 0) <= 1;
+      const frac = idx => { if(idx < 0 || floating(idx)) return 1; return clamp((pv(A(idx)) - pv(A(ig))) / vlog, 0, 1); };
+      const fracIn = idx => { if(idx < 0 || floating(idx)) return 0; return clamp((pv(A(idx)) - pv(A(ig))) / vlog, 0, 1); };
+      let ci = 0;
+      const out = (o, f, tag) => { if(o < 0) return; const high = Math.max(0, vs - drop); els.push(thev(A(o), A(ig), 0.2 + f * high, 0.6, inst, tag)); };
+      const fp = nm => findPin(inst, new RegExp('^' + nm + '$'));
+      if(d.bts){
+        const en = Math.min(frac(fp('R_EN')), frac(fp('L_EN')));
+        out(fp('M\\+'), en * fracIn(fp('RPWM')), 'M1'); out(fp('M−'), en * fracIn(fp('LPWM')), 'M2');
+      } else {
+        for(const [en, i1, i2, o1, o2] of d.ch){
+          const e = en ? frac(fp(en)) : 1;
+          const stby = findPin(inst, /^(STBY|SLP)$/);
+          const stOK = stby < 0 || floating(stby) || pv(A(stby)) - pv(A(ig)) > 0.5 * vlog;
+          out(fp(o1), (stOK ? e : 0) * fracIn(fp(i1)), 'OA' + ci);
+          out(fp(o2), (stOK ? e : 0) * fracIn(fp(i2)), 'OB' + ci);
+          ci++;
+        }
+      }
+      continue;
+    }
     /* ===== ENTRADAS / CONTROLES ===== */
     if(d.kind === 'btn'){
       const closed = !!(st.pressed || st.latched);
@@ -536,6 +649,11 @@ function buildElements(net, dt){
     }
 
     /* ===== ATUADORES / CARGAS ===== */
+    if(d.kind === 'buzzer' && d.modBuzz){
+      const iv = findPin(inst, /^(VCC|VIN|VDD|5V)$/), ig = findPin(inst, /^GND$/);
+      els.push(res(A(iv), A(ig), 5 / 0.03, inst, 'load'));
+      continue;
+    }
     if(d.kind === 'buzzer'){
       const active = d.id === 'buzzA';
       els.push(res(A(0), A(1), active ? 42 : (d.id === 'speaker' ? 8 : 60), inst, 'load'));
@@ -548,7 +666,7 @@ function buildElements(net, dt){
       if(d.pins >= 4){ els.push(res(A(2), A(3), 1e8, inst, 'enc')); }
       continue;
     }
-    if(d.kind === 'relay' && d.id !== 'peltier' && d.id !== 'solenoid'){
+    if(d.kind === 'relay' && d.id !== 'peltier' && d.id !== 'solenoid' && !d.id2){
       // módulo relé: SIG,VCC,GND (+ COM,NO,NC quando existirem)
       const ig = findPin(inst, /^SIG\d*$/), iv = findPin(inst, /^VCC$/), ign = findPin(inst, /^GND$/);
       if(iv >= 0 && ign >= 0){
@@ -579,12 +697,16 @@ function buildElements(net, dt){
       }
       continue;
     }
-    if(d.id === 'peltier' || d.id === 'solenoid'){ els.push(res(A(0), A(1), d.id === 'peltier' ? 3 : 25, inst, 'load')); continue; }
+    if(d.id === 'peltier' || d.id === 'solenoid' || d.id2){ els.push(res(A(0), A(1), d.loadR || ((d.id2 || d.id) === 'peltier' ? 3 : 25), inst, 'load')); continue; }
     if(d.kind === 'stepper'){
-      if(d.pins >= 6){ // A4988-like: EN,STP,DIR,VCC,GND,VM
-        els.push(res(A(3), A(4), 5 / 0.012, inst, 'logic')); els.push(res(A(5), A(4), 12 / 0.5, inst, 'motor'));
-      } else {
-        for(let i = 0; i < 4; i++) els.push(res(A(i), A(4), 2000, inst, 'in' + i));
+      const names = d.pinNames;
+      if(names.includes('A+')){ els.push(res(A(names.indexOf('A+')), A(names.indexOf('A−')), 4, inst, 'cA')); els.push(res(A(names.indexOf('B+')), A(names.indexOf('B−')), 4, inst, 'cB')); }
+      else if(names.some(n => /^IN1$/.test(n)) && names.some(n => /^\+?(5V|12V)$/.test(n))){ const pc = names.findIndex(n => /^\+?(5V|12V)$/.test(n)); for(let i = 0; i < 4; i++) els.push(res(A(i), A(pc), 2000, inst, 'in' + i)); }
+      else {
+        const ivm = findPin(inst, /^(VMOT|VM)$/), ig = findPin(inst, /^GND$/), il = findPin(inst, /^(VDD|VIO|VCC)$/);
+        if(ivm >= 0 && ig >= 0) els.push(res(A(ivm), A(ig), 12 / 0.5, inst, 'motor'));
+        if(il >= 0 && ig >= 0) els.push(res(A(il), A(ig), 5 / 0.012, inst, 'logic'));
+        if(d.pins >= 6 && il < 0 && ivm < 0){ els.push(res(A(3), A(4), 5 / 0.012, inst, 'logic')); els.push(res(A(5), A(4), 12 / 0.5, inst, 'motor')); }
       }
       continue;
     }
@@ -953,6 +1075,9 @@ function applyPhysics(dt){
     }
     if(d.kind === 'relay' && CIR.react[inst.id]) st.on = !!CIR.react[inst.id].on;
     if(d.kind === 'relay_mod' && CIR.react[inst.id]) st.onArr = CIR.react[inst.id].on;
+    if(d.kind === 'relayN' && CIR.react[inst.id]) st.onArr = CIR.react[inst.id].on;
+    if(d.kind === 'ssr'){ const Ii = Math.abs(cs.I.IN || 0); const rs = CIR.react[inst.id]; if(rs) rs.on = Ii > 0.004; st.on = !!(rs && rs.on); }
+    if(d.kind === 'ne555' && CIR.react[inst.id]){ const rs = CIR.react[inst.id]; const vcc = CIR.pinV(inst, 7) - CIR.pinV(inst, 0); if(vcc > 4.2){ const thr = CIR.pinV(inst, 5) - CIR.pinV(inst, 0), trg = CIR.pinV(inst, 1) - CIR.pinV(inst, 0), rst = CIR.pinV(inst, 3) - CIR.pinV(inst, 0); if(rst < 0.7) rs.q = 0; else if(thr > vcc * 2 / 3) rs.q = 0; else if(trg < vcc / 3) rs.q = 1; st.on = !!rs.q; } }
     if(d.kind === 'strip'){
       const gp = CIR.gpioOfPin(inst, findPin(inst, /^DIN$/));
       st.dinOK = gp != null;
