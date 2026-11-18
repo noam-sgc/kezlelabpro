@@ -718,6 +718,7 @@ window.loadBenchData = function(dd){
   renderProps();
 };
 
+try { if(typeof syncDemoBtn === 'function') syncDemoBtn(); } catch(e){}
 /* nova bancada sempre re-renderiza com rotação aplicada */
 const _renderBench = window.renderBench;
 window.renderBench = function(){

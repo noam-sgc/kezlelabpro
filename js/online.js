@@ -187,8 +187,10 @@ function autoWire(mcu, parts){
     if(s >= 0 && c >= 0){ W(mcu, nm(mcu, sda), q, s); W(mcu, nm(mcu, scl), q, c); }
     const sig = find(q, /^(DATA|OUT|AO|SIG|IN|DIN|AO|VRx|SIG1)$/i);
     if(sig >= 0 && !(s >= 0)){
-      const gp = q.props.gpio != null ? q.props.gpio : q.def.dgpio;
-      let pin = /uno|nano/.test(id) ? (q.def.sk && /luxA|gas|soil|rain|ph|tds|snd|curr|volt|dust|hall|wlev/.test(q.def.sk) ? 'A0' : 'D' + gp) : /pico/.test(id) ? 'GP' + gp : 'IO' + gp;
+      const analog = (q.def.sk && /^(luxA|gas|soil|rain|ph|tds|snd|curr|volt|dust|hall|wlev)$/.test(q.def.sk)) || q.def.kind === 'pot' || q.def.kind === 'joy' || /^(AO|VRx)$/.test(q.def.pinNames[sig]);
+      const gp = analog ? 34 : (q.def.dgpio != null ? q.def.dgpio : 4);
+      let pin = /uno|nano/.test(id) ? (analog ? 'A0' : 'D' + gp) : /pico/.test(id) ? (analog ? 'GP26' : 'GP' + gp) : 'IO' + gp;
+      if(analog && /esp32/.test(id) === false && !/uno|nano|pico/.test(id)) pin = mcu.def.pinNames.includes('A0') ? 'A0' : pin;
       if(mcu.def.pinNames.includes(pin)){ W(mcu, nm(mcu, pin), q, sig); BENCH.wires[BENCH.wires.length - 1].color = cols[ci++ % cols.length]; }
     }
   }
@@ -275,6 +277,7 @@ setInterval(() => { if(document.getElementById('v-gal').classList.contains('on')
 // seeds: usam código MicroPython; curtidas globais
 SEEDS.forEach(s => { s.lang = 'py'; });
 G.mine = new Set(projs().filter(p => p.pub).map(p => p.pub));
+SEEDS[3].parts[0][0] = 'esp32';
 setTimeout(() => loadGallery(true), 600);
 renderProjects();
 

@@ -509,13 +509,14 @@ window.defaultProps = function(def){
 };
 
 /* ---------- geradores de bibliotecas genéricas (Python e C++) ---------- */
-const sensorParts = () => PARTS.filter(p => p.cat === 'sensor' && p.sk && sf0 && (EXTRA_SK[p.sk] || sf0(p).length));
+const sensorParts = () => PARTS.filter(p => p.sk && (EXTRA_SK[p.sk] || window.sensFields(p).length));
 const _mm = window.makeModules;
 window.makeModules = function(){
   const mods = _mm();
   for(const d of sensorParts()){
-    const baseNames = new Set([d.id, d.id.replace(/_/g, ''), 'adafruit_' + d.id, 'sparkfun_' + d.id, 'micropython_' + d.id, d.id.replace(/^(.)/, '$1')]);
-    const cls = d.id.replace(/_/g, '').toUpperCase();
+    const key = d.mod || d.id;
+    const baseNames = new Set([d.id, key, key.replace(/_/g, ''), 'adafruit_' + key, 'sparkfun_' + key, 'micropython_' + key]);
+    const cls = key.replace(/_/g, '').toUpperCase();
     const classNames = [cls, d.id.toUpperCase(), 'Adafruit_' + cls, d.id.charAt(0).toUpperCase() + d.id.slice(1)];
     const ctor = function(){ return makeGenericSensor(d); };
     for(const nm of baseNames){ if(mods[nm]) continue; mods[nm] = {}; for(const c of classNames) mods[nm][c] = ctor; mods[nm].Sensor = ctor; }
@@ -536,8 +537,8 @@ function makeGenericSensor(def){
 }
 // classes C++ genéricas (Adafruit_XXX / XXX) — nomes de método read*/get* resolvem pelo campo
 window.KEZLE_CPP_CLASSES = {};
-for(const d of sensorParts()){
-  const cls = d.id.replace(/_/g, '').toUpperCase();
+function regCpp(d){
+  const cls = (d.mod || d.id).replace(/_/g, '').toUpperCase();
   const factory = function(){
     const base = { begin: () => true, init: () => true, available: () => true, update: () => true, setup: () => 0, reset: () => 0, powerOn: () => 0, startMeasurement: () => 0, dataReady: () => true, readSensor: () => true };
     const fs = sensFields(d);
@@ -550,8 +551,10 @@ for(const d of sensorParts()){
       return () => { const p = sensorFor(d); if(!p || !CIRCUIT.powered(p)) return 0; let v = p.state.vals[f.k]; if(v == null) v = 0; if(/pressure/i.test(f.k) && /^(readPressure|getPressure)$/.test(k)) v *= 100; return d.sk === 'adc16' ? (CIRCUIT.pinV(p, p.def.pinNames.indexOf('A' + f.k.slice(2))) - CIRCUIT.pinV(p, p.def.pinNames.indexOf('GND'))) : Math.round(v * 100) / 100; };
     } });
   };
-  for(const nm of [cls, 'Adafruit_' + cls, d.id.toUpperCase(), 'Sparkfun_' + cls, 'SparkFun_' + cls]) if(/^[A-Za-z_]\w*$/.test(nm)) window.KEZLE_CPP_CLASSES[nm] = factory;
+  for(const nm of [cls, 'Adafruit_' + cls, (d.mod || d.id).toUpperCase(), 'Sparkfun_' + cls, 'SparkFun_' + cls]) if(/^[A-Za-z_]\w*$/.test(nm)) window.KEZLE_CPP_CLASSES[nm] = factory;
 }
+sensorParts().forEach(regCpp);
+window.KEZLE_REG_CPP = d => { if(d.sk && window.sensFields(d).length) regCpp(d); };
 
 /* ---------- ADS1115: lê a tensão REAL dos pinos A0..A3 ---------- */
 const _os = CIRCUIT.onSolve;

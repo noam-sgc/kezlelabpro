@@ -179,6 +179,8 @@ function cApi(src){
   api.A0 = analog[0]; api.A1 = analog[1]; api.A2 = analog[2]; api.A3 = analog[3]; api.A4 = analog[4]; api.A5 = analog[5]; api.A6 = analog[6]; api.A7 = analog[7];
   for(let i = 0; i < 40; i++){ api['GPIO' + i] = i; api['GP' + i] = i; api['D' + i] = i; api['IO' + i] = i; api['PIN_' + i] = i; }
   api.cout = { __cout: true };
+  const gen = window.KEZLE_CPP_CLASSES || {};
+  for(const k in gen) if(!(k in api) && /^[A-Za-z_]\w*$/.test(k)) api[k] = gen[k];
   if(/\bM5\b|M5Stack|M5Unified|M5Core/.test(src)) api.M5 = makeM5();
   // C helpers para display (estilo "tft_*")
   let g_ = null;

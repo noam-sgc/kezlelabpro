@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Kezle Lab Pro 1.1.7 — Rebuild Estável</title>
+<title>Kezle Lab Pro 1.2.0</title>
 <style>
 :root{
 --bg:#070d17;--panel:#0d1626;--panel2:#111e33;--panel3:#16253f;--line:#1e2f4a;
@@ -266,15 +266,15 @@ h1,h2,h3{font-weight:650}
 <div id="auth">
   <div class="authCard">
     <div class="authBrand">
-      <div class="logo"><div class="logoHex">⚡</div><div><h1>Kezle Lab Pro</h1><span class="ver">versão 1.1.7 rebuild</span></div></div>
+      <div class="logo"><div class="logoHex">⚡</div><div><h1>Kezle Lab Pro</h1><span class="ver">versão 1.2.0</span></div></div>
       <div class="freeTag">Completamente gratuito:</div>
       <p class="small" style="margin:0 0 10px">sem anúncios, sem assinatura, sem limitações — bancada CAD interativa para eletrônica embarcada.</p>
       <ul>
-        <li>175 peças funcionais: ESP32, Arduino, Pico, STM32 e dezenas de sensores</li>
+        <li>600+ peças com eletricidade real: MCUs, telas touch, sensores, drivers, passivos</li>
         <li>BMP280 · DHT11 · TEMT6000 · MPU6050 · Balanças HX711 e muito mais</li>
         <li>Resistores, capacitores, transistores e LEDs paramétricos</li>
-        <li>Protoboard 100% funcional: cada linha/trilho é um nó elétrico</li>
-        <li>Espaço de programação <b>MicroPython</b> e <b>C++ (Arduino)</b></li>
+        <li>Solver de circuito real: LED queima sem resistor, motor com RPM, protoboard em trilhas</li>
+        <li>9 linguagens: <b>MicroPython, CircuitPython, C++, C, JavaScript, Lua, BASIC, Go e Rust</b></li>
         <li>Serial Monitor + Serial Plotter em tempo real</li>
         <li>Sensores calibrados pelo clima da sua localização</li>
         <li>Suporte opcional a fotos reais em <code>assets/parts/</code></li>
@@ -298,7 +298,7 @@ h1,h2,h3{font-weight:650}
         <button class="btn prime w100" id="btnReg">🚀 Criar conta gratuita</button>
       </div>
       <div class="authErr" id="authErr"></div>
-      <p class="small" style="margin-top:14px;text-align:center">Armazenamento 100% local · projetos salvos por conta</p>
+      <p class="small" style="margin-top:14px;text-align:center">Contas locais · projetos salvos no navegador · Galeria Global em servidor</p>
     </div>
   </div>
 </div>
@@ -306,7 +306,7 @@ h1,h2,h3{font-weight:650}
 <div id="app">
   <div id="topbar">
     <div class="logo"><div class="logoHex">⚡</div><span>Kezle Lab Pro</span></div>
-    <span class="ver">v1.1.7</span>
+    <span class="ver">v1.2.0</span>
     <select id="langSel" class="chip" title="Idioma do site"></select>
     <span class="joinChip" id="joinChip">✨ Se junte ao Kezle Lab Pro</span>
     <span class="chip" id="locChip" title="Configurar localização">🌍 <b id="locChipTx">Sem localização</b></span>
@@ -327,7 +327,7 @@ h1,h2,h3{font-weight:650}
       <button class="navBtn" data-v="loc"><span class="ic">🌍</span>Localização</button>
       <button class="navBtn" data-v="proj"><span class="ic">💾</span>Meus Projetos</button>
       <button class="navBtn" data-v="gal"><span class="ic">🌐</span>Galeria Global</button>
-      <div class="foot">Kezle Lab Pro 1.1.7<br>© 2026 Kezle Systems</div>
+      <div class="foot">Kezle Lab Pro 1.2.0<br>© 2026 Kezle Systems</div>
     </div>
 
     <div id="views">
@@ -9366,6 +9366,7 @@ $$('.navBtn').forEach(function(b){ b.onclick = function(){ switchView(b.dataset.
 <script src="js/lang4.js"></script>
 <script src="js/catalog.js"></script>
 <script src="js/online.js"></script>
+<script src="js/studio.js"></script>
 <script src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
 <script>
 function googleTranslateElementInit(){ new google.translate.TranslateElement({ pageLanguage: 'pt', autoDisplay: false }, 'google_translate_element'); }

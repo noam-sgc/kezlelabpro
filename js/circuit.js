@@ -128,10 +128,12 @@ CIR.buildNets = buildNets;
 /* ---------- elementos ---------- */
 function lin(nodes, J, I0, owner, tag){ return { n: nodes, lin: true, J, I0, owner, tag }; }
 function res(a, b, R, owner, tag){
+  if(!Number.isFinite(R)) R = 1e9;
   const g = 1 / Math.max(R, 1e-6);
   return lin([a, b], [[g, -g], [-g, g]], [0, 0], owner, tag);
 }
 function thev(p, m, V, R, owner, tag){
+  if(!Number.isFinite(V)) V = 0; if(!Number.isFinite(R)) R = 1e9;
   const g = 1 / Math.max(R, 1e-6);
   return lin([p, m], [[g, -g], [-g, g]], [-g * V, g * V], owner, tag);
 }
@@ -288,7 +290,7 @@ function buildElements(net, dt){
   const mcu = primaryMcu();
   const R = CIR.react;
   const prev = CIR.prevV;
-  const pv = k => prev[k] || 0;
+  const pv = k => { const x = prev[k]; return Number.isFinite(x) ? x : 0; };
   const state = CIR.devState = CIR.devState || {};
 
   for(const inst of BENCH.parts){
@@ -608,8 +610,7 @@ function buildElements(net, dt){
       continue;
     }
     if(d.kind === 'joy'){
-      const fx = clamp((+p.jx == null ? 50 : +p.jx) / 100, 0.001, 0.999), fy = clamp(((p.jy == null ? 50 : +p.jy)) / 100, 0.001, 0.999);
-      const fx2 = clamp((p.jx == null ? 50 : +p.jx) / 100, 0.001, 0.999);
+      const fx2 = clamp((p.jx == null ? 50 : +p.jx) / 100, 0.001, 0.999), fy = clamp((p.jy == null ? 50 : +p.jy) / 100, 0.001, 0.999);
       els.push(res(A(3), A(0), 10000 * (1 - fx2), inst, 'X1')); els.push(res(A(0), A(4), 10000 * fx2, inst, 'X2'));
       els.push(res(A(3), A(1), 10000 * (1 - fy), inst, 'Y1')); els.push(res(A(1), A(4), 10000 * fy, inst, 'Y2'));
       els.push(res(A(2), A(4), st.pressed ? 0.05 : 1e9, inst, 'SW'));
@@ -861,7 +862,7 @@ function solveCircuit(dt){
     for(const e of els) for(const k of e.n) nodeIndex(k);
     let v = new Float64Array(nN - 1);
     // chute inicial: tensões anteriores
-    for(const [k, i] of idx) if(i > 0 && CIR.prevV[k] != null) v[i - 1] = CIR.prevV[k];
+    for(const [k, i] of idx) if(i > 0 && Number.isFinite(CIR.prevV[k])) v[i - 1] = CIR.prevV[k];
     let converged = false, it = 0, sol = null;
     for(it = 0; it < 120; it++){
       sol = solveOnce(els, nodeIndex, nN, v);
@@ -908,6 +909,7 @@ function solveCircuit(dt){
       m.list.forEach((g, i) => { const duty = clamp(PINS[g].duty / 1023, 0, 1); acc += duty * (vOf(m.highs[i], root) - vOf(m.lows, root)); });
       val = acc;
     }
+    if(!Number.isFinite(val)) val = 0;
     V.set(kk, val);
     prev[root] = val;
   }
