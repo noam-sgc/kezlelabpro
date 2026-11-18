@@ -1178,6 +1178,10 @@ window.refreshPower = function(){
   if(typeof renderHwCheck === 'function') renderHwCheck();
 };
 
+/* estado de energia válido desde o carregamento (antes era null => tudo parecia energizado) */
+POWER = { powered: id => { const p = BENCH.parts.find(x => x.id === id); return p ? CIR.powered(p) : false; } };
+CONN = connectivity();
+
 /* ---------- leitura de pinos pelo código ---------- */
 window.readADC = function(id){
   if(!SIM.on) return 0;
