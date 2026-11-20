@@ -730,7 +730,7 @@ const CONDUCT = ['res','led','d'];
    Formato obrigatório:
    ["Nome da Cidade", latitude, longitude, altitude, "ISO2"]
    ======================================================================== */
-window.CITIES= [
+window.CITIES_DATA = [
 // Austrália
 ["Sydney",-33.87,151.21,58,"AU"],
 ["Melbourne",-37.81,144.96,31,"AU"],
@@ -2509,7 +2509,60 @@ window.CITIES= [
 ["Kampot",10.61,104.18,10,"KH"],
 ["Poipet",13.65,102.58,30,"KH"],
 ["Savannakhet",16.57,104.76,150,"LA"],
-["Baucau",-8.47,126.45,160,"TL"]
+["Baucau",-8.47,126.45,160,"TL"],
+// Complemento: capitais e metrópoles
+["Tokyo",35.68,139.69,40,"JP"],
+["Beijing",39.90,116.41,44,"CN"],
+["Shanghai",31.23,121.47,4,"CN"],
+["Delhi",28.61,77.21,216,"IN"],
+["Mexico City",19.43,-99.13,2240,"MX"],
+["Moscow",55.76,37.62,156,"RU"],
+["New York",40.71,-74.01,10,"US"],
+["Istanbul",41.01,28.98,40,"TR"],
+["Jakarta",-6.21,106.85,8,"ID"],
+["Seoul",37.57,126.98,38,"KR"],
+["Tehran",35.69,51.39,1190,"IR"],
+["Baghdad",33.31,44.37,34,"IQ"],
+["Madrid",40.42,-3.70,667,"ES"],
+["Rome",41.90,12.50,21,"IT"],
+["Berlin",52.52,13.40,34,"DE"],
+["Lisbon",38.72,-9.14,2,"PT"],
+["Johannesburg",-26.20,28.05,1753,"ZA"],
+["Singapore",1.35,103.82,15,"SG"],
+["Hong Kong",22.32,114.17,32,"HK"],
+["Taipei",25.03,121.57,9,"TW"],
+["Nanjing",32.06,118.80,15,"CN"],
+["Riyadh",24.71,46.68,612,"SA"],
+["Athens",37.98,23.73,70,"GR"],
+["Vienna",48.21,16.37,171,"AT"],
+["Warsaw",52.23,21.01,100,"PL"],
+["Kyiv",50.45,30.52,179,"UA"],
+["Prague",50.08,14.44,235,"CZ"],
+["Budapest",47.50,19.04,102,"HU"],
+["Stockholm",59.33,18.07,28,"SE"],
+["Helsinki",60.17,24.94,10,"FI"],
+["Copenhagen",55.68,12.57,14,"DK"],
+["Amsterdam",52.37,4.90,2,"NL"],
+["Brussels",50.85,4.35,13,"BE"],
+["Zurich",47.38,8.54,408,"CH"],
+["Milan",45.46,9.19,122,"IT"],
+["Munich",48.14,11.58,520,"DE"],
+["Hamburg",53.55,9.99,6,"DE"],
+["San Francisco",37.77,-122.42,16,"US"],
+["Montevideo",-34.90,-56.19,43,"UY"],
+["Asunción",-25.26,-57.58,43,"PY"],
+["Algiers",36.75,3.06,25,"DZ"],
+["Accra",5.60,-0.19,61,"GH"],
+["Addis Ababa",9.03,38.74,2355,"ET"],
+["Cape Town",-33.92,18.42,25,"ZA"],
+["Kathmandu",27.72,85.32,1400,"NP"],
+["Baku",40.41,49.87,-28,"AZ"],
+["Tbilisi",41.72,44.78,490,"GE"],
+["Yerevan",40.18,44.51,989,"AM"],
+["Bucharest",44.43,26.10,85,"RO"],
+["Belgrade",44.79,20.45,117,"RS"],
+["Edinburgh",55.95,-3.19,47,"GB"],
+["Bengaluru",12.97,77.59,920,"IN"]
 ];
 /* ===== SISTEMA DE CIDADES ===== */
 function flagOf(cc){
@@ -2522,7 +2575,7 @@ function flagOf(cc){
 
 function buildCities(){
   const src = window.CITIES_DATA || [];
-  CITIES = src.map(function(a){
+  CITIES = src.filter(Boolean).map(function(a){
     if(Array.isArray(a)){
       return {n:a[0], lat:a[1], lon:a[2], alt:a[3] || 0, co:a[4] || '', fl:flagOf(a[4])};
     }
@@ -2535,6 +2588,7 @@ function buildCities(){
       fl:a.fl || flagOf(a.co || a.iso2 || '')
     };
   });
+  window.CITIES = CITIES;
   console.log('✅ Cidades carregadas:', CITIES.length);
 }
 
@@ -2616,83 +2670,55 @@ function climateBaseline() {
   BASE = { t: t, h: h, p: p, alt: alt, lux: lux };
 }
 
-// --- Sistema de Busca de Cidades ---
-function initCitySearch() {
+// --- Sistema de Busca de Cidades (lista própria, sem acento, ranqueada) ---
+const _norm = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+function searchCities(q, limit){
+  q = _norm(q); if(!q) return CITIES.slice(0, limit || 12);
+  const out = [];
+  for(const c of CITIES){
+    if(!c._k) c._k = _norm(c.n);
+    const k = c._k, i = k.indexOf(q);
+    const sc = k === q ? 0 : k.startsWith(q) ? 1 : i > 0 ? 2 : (_norm(c.co) === q ? 3 : 9);
+    if(sc < 9) out.push([sc, c]);
+  }
+  out.sort((x, y) => x[0] - y[0] || x[1].n.length - y[1].n.length);
+  return out.slice(0, limit || 12).map(x => x[1]);
+}
+function pickCity(c){
+  setLocation(c.lat, c.lon, c, 'busca de cidade');
+  const inp = $('#citySearch'); if(inp) inp.value = c.n + ' (' + c.co + ')';
+  const box = $('#cityRes'); if(box) box.style.display = 'none';
+  toast('🌍 ' + c.n + ' selecionada — sensores calibrados', 'ok');
+}
+function initCitySearch(){
   const input = $('#citySearch');
-  const dl = $('#cityDL');
-  
-  if (!input || !dl) {
-    console.error("❌ Elementos de busca de cidade não encontrados (#citySearch, #cityDL)");
-    return;
+  if(!input || input._ready) return;
+  input._ready = true;
+  input.removeAttribute('list');
+  let box = $('#cityRes');
+  if(!box){
+    box = document.createElement('div'); box.id = 'cityRes';
+    box.style.cssText = 'position:relative;display:none;max-height:260px;overflow:auto;background:var(--panel2,#0f1b2e);border:1px solid var(--line,#24344d);border-radius:8px;margin-top:4px;z-index:20';
+    input.insertAdjacentElement('afterend', box);
   }
-
-  // Garante que window.CITIES exista e seja um array
-  if (!window.CITIES || !Array.isArray(window.CITIES)) {
-    console.warn("⚠️ window.CITIES não definido. Criando lista vazia.");
-    window.CITIES = [];
-  }
-
-  function populateList(query) {
-    query = (query || '').toLowerCase().trim();
-    dl.innerHTML = '';
-    
-    // Filtra cidades por nome ou país (ISO2)
-    const matches = window.CITIES.filter(c => {
-      const nameMatch = c.n.toLowerCase().includes(query);
-      const countryMatch = (c.co || '').toLowerCase().includes(query);
-      return nameMatch || countryMatch;
-    });
-
-    // Limita a exibição para performance (exibe primeiros 200)
-    const display = matches.slice(0, 200);
-    
-    display.forEach(c => {
-      const opt = document.createElement('option');
-      // Formato: "Nome (País)" - Isso ajuda o usuário a distinguir cidades homônimas
-      opt.value = `${c.n} (${c.co})`; 
-      opt.label = `${c.fl || '🌐'} ${c.n}, ${c.co}`; // Texto visível no dropdown
-      dl.appendChild(opt);
-    });
-
-    // Atualiza placeholder com contagem total
-    input.placeholder = `🔍 Buscar entre ${window.CITIES.length.toLocaleString()} cidades...`;
-  }
-
-  // Evento Input: Preenche a lista enquanto digita
-  input.addEventListener('input', (e) => {
-    populateList(e.target.value);
+  let act = -1, list = [];
+  const render = () => {
+    list = searchCities(input.value, 14); act = list.length ? 0 : -1;
+    box.innerHTML = list.length ? list.map((c, i) => '<div class="cityOpt" data-i="' + i + '" style="padding:7px 10px;cursor:pointer;display:flex;gap:8px;align-items:center;' + (i === act ? 'background:rgba(56,189,248,.18)' : '') + '"><span>' + (c.fl || '🌐') + '</span><b>' + c.n + '</b><span style="opacity:.6">' + c.co + ' · ' + c.alt + ' m</span></div>').join('') : '<div style="padding:8px 10px;opacity:.7">Nenhuma cidade encontrada</div>';
+    box.style.display = 'block';
+  };
+  const mark = () => [...box.querySelectorAll('.cityOpt')].forEach((e, i) => e.style.background = i === act ? 'rgba(56,189,248,.18)' : '');
+  input.addEventListener('input', render);
+  input.addEventListener('focus', render);
+  input.addEventListener('keydown', e => {
+    if(e.key === 'ArrowDown'){ e.preventDefault(); act = Math.min(list.length - 1, act + 1); mark(); }
+    else if(e.key === 'ArrowUp'){ e.preventDefault(); act = Math.max(0, act - 1); mark(); }
+    else if(e.key === 'Enter'){ e.preventDefault(); if(list[act]) pickCity(list[act]); else toast('Cidade não encontrada no banco de dados.', 'err'); }
+    else if(e.key === 'Escape'){ box.style.display = 'none'; }
   });
-
-  // Evento Change: Selecionou uma cidade da lista
-  input.addEventListener('change', (e) => {
-    const val = e.target.value;
-    if (!val) return;
-    
-    // Extrai o nome da cidade removendo "(PAÍS)"
-    const cityName = val.split(' (')[0].trim().toLowerCase();
-    
-    // Encontra a cidade exata no dataset
-    const found = window.CITIES.find(c => c.n.toLowerCase() === cityName);
-    
-    if (found) {
-      setLocation(found.lat, found.lon, found, 'busca de cidade');
-      toast(`🌍 ${found.n} selecionada — Sensores calibrados`, 'ok');
-    } else {
-      toast("Cidade não encontrada no banco de dados.", "err");
-      input.value = ''; // Limpa se não achar
-    }
-  });
-
-  // Enter fecha o foco
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      input.blur();
-    }
-  });
-
-  // Inicializa lista vazia
-  populateList('');
+  box.addEventListener('mousedown', e => { const o = e.target.closest('.cityOpt'); if(o){ e.preventDefault(); pickCity(list[+o.dataset.i]); } });
+  document.addEventListener('mousedown', e => { if(e.target !== input && !box.contains(e.target)) box.style.display = 'none'; });
+  input.placeholder = '🔍 buscar entre ' + CITIES.length.toLocaleString('pt-BR') + ' cidades…';
 }
 
 // --- Definição Central de Localização ---
@@ -2878,43 +2904,14 @@ document.querySelector('.navBtn[data-v="loc"]').addEventListener('click', () => 
 });
 
 // Chama inicialização se já estiver na tela
+initCitySearch();
 if ($('#v-loc').classList.contains('on')) {
-  initCitySearch();
   renderClimateUI();
 }
 
-/* ===== BUSCA DE CIDADES ===== */
-(function initCitySearch(){
-  const input = $('#citySearch');
-  if(!input) return;
-
-  function findCity(value){
-    const name = String(value || '').split(' (')[0].trim().toLowerCase();
-    return CITIES.find(function(c){ return c.n.toLowerCase() === name; });
-  }
-
-  input.addEventListener('input', function(e){
-    populateDatalist(e.target.value);
-  });
-
-  input.addEventListener('change', function(e){
-    const city = findCity(e.target.value);
-    if(city){
-      setLocation(city.lat, city.lon, city, 'busca de cidade');
-      toast('🌍 ' + city.n + ' — sensores calibrados', 'ok');
-    }
-  });
-
-  input.addEventListener('keydown', function(e){
-    if(e.key === 'Enter'){
-      e.preventDefault();
-      input.blur();
-    }
-  });
-})();
-
 /* ===== GPS E MAPA ===== */
 function placePin(lat,lon,cityName){
+  if(typeof lat !== 'number' || typeof lon !== 'number') return;
   const mapWrap = $('#mapWrap');
   const mapPin = $('#mapPin');
   const pinTip = $('#pinTip');
@@ -8224,7 +8221,7 @@ function makeModules(){
         const o = {};
         Object.defineProperties(o, {
           temperature: { get: function(){ return round1(readKind('bmp').temperature || 0); } },
-          pressure: { get: function(){ return round1(readKind('bmp').pressure || 0); } },
+          pressure: { get: function(){ return Math.round((readKind('bmp').pressure || 0) * 100); } },  /* Pa, como nas libs reais */
           altitude: { get: function(){ return round1(readKind('bmp').altitude || 0); } }
         });
         return o;
@@ -8235,7 +8232,7 @@ function makeModules(){
         const o = {};
         Object.defineProperties(o, {
           temperature: { get: function(){ return round1(readKind('bme').temperature || 0); } },
-          pressure: { get: function(){ return round1(readKind('bme').pressure || 0); } },
+          pressure: { get: function(){ return Math.round((readKind('bme').pressure || 0) * 100); } },
           humidity: { get: function(){ return round1(readKind('bme').humidity || 0); } }
         });
         return o;
@@ -8783,7 +8780,7 @@ function setRunUI(on){
 const TPLS = [
   { lng: 'py', k: 'blink', label: '💡 Blink LED', code: '# LED piscando (GPIO2)\nfrom machine import Pin\nfrom time import sleep\nled = Pin(2, Pin.OUT)\nwhile True:\n    led.on()\n    print("LED: 1")\n    sleep(0.5)\n    led.off()\n    print("LED: 0")\n    sleep(0.5)' },
   { lng: 'py', k: 'dht', label: '🌡 DHT11 — clima', code: '# Leitura DHT11\nfrom dht import DHT11\nfrom time import sleep\nsensor = DHT11(4)\nwhile True:\n    sensor.measure()\n    t = sensor.temperature()\n    h = sensor.humidity()\n    print(f"Temp: {t} | Umidade: {h}")\n    sleep(2)' },
-  { lng: 'py', k: 'bmp', label: '🧭 BMP280 — estação', code: '# Estação barométrica BMP280\nfrom machine import I2C\nfrom bmp280 import BMP280\nfrom time import sleep\ni2c = I2C(0)\nbmp = BMP280(i2c)\nwhile True:\n    print(f"Temp: {bmp.temperature} | Pressao: {bmp.pressure} | Alt: {bmp.altitude}")\n    sleep(2)' },
+  { lng: 'py', k: 'bmp', label: '🧭 BMP280 — estação', code: '# Estação barométrica BMP280\nfrom machine import I2C\nfrom bmp280 import BMP280\nfrom time import sleep\ni2c = I2C(0)\nbmp = BMP280(i2c)\nwhile True:\n    print(f"Temp: {bmp.temperature} | Pressao: {bmp.pressure/100:.1f} hPa | Alt: {bmp.altitude}")\n    sleep(2)' },
   { lng: 'py', k: 'mpu_oled', label: '🕹 MPU6050 + OLED', code: '# MPU6050 + OLED SSD1306\nfrom machine import I2C\nfrom mpu6050 import MPU6050\nfrom ssd1306 import SSD1306_I2C\nfrom time import sleep\ni2c = I2C(0)\nmpu = MPU6050(i2c)\noled = SSD1306_I2C(i2c)\nwhile True:\n    ax = mpu.acceleration[0]\n    az = mpu.acceleration[2]\n    oled.fill(0)\n    oled.text("Kezle Lab", 0, 0)\n    oled.text(f"ax: {ax:.2f}", 0, 20)\n    oled.text(f"az: {az:.2f}", 0, 36)\n    oled.show()\n    print(f"ax: {ax:.2f} | az: {az:.2f}")\n    sleep(0.5)' },
   { lng: 'py', k: 'temt', label: '🌙 TEMT6000 luz noturna', code: '# Luz noturna com TEMT6000\nfrom machine import Pin, ADC\nfrom time import sleep\nluz = ADC(Pin(34))\nled = Pin(2, Pin.OUT)\nwhile True:\n    v = luz.read()\n    print(f"Luz: {v}")\n    if v < 1400:\n        led.on()\n    else:\n        led.off()\n    sleep(0.5)' },
   { lng: 'py', k: 'servo', label: '⚙️ Varredura de servo', code: '# Varredura de servo SG90\nfrom machine import Pin, PWM\nfrom time import sleep_ms\nservo = PWM(Pin(13), freq=50)\nwhile True:\n    for ang in range(0, 181, 5):\n        servo.duty(int(ang / 180 * 102))\n        sleep_ms(15)\n    for ang in range(180, -1, -5):\n        servo.duty(int(ang / 180 * 102))\n        sleep_ms(15)' },
@@ -9322,7 +9319,7 @@ function switchView(v){
   $$('.view').forEach(function(x){ x.classList.remove('on'); });
   $('#v-' + v).classList.add('on');
   
-  if(v === 'loc'){ placePin(); renderClimate(); }
+  if(v === 'loc'){ initCitySearch(); if(LOC.on && LOC.lat != null) placePin(LOC.lat, LOC.lon, LOC.city && LOC.city.n); (typeof renderClimateUI === 'function' ? renderClimateUI : renderClimate)(); }
   if(v === 'py' || v === 'bench'){ plotResizeAll(); renderHwCheck(); }
 }
 
@@ -9342,7 +9339,7 @@ $$('.navBtn').forEach(function(b){ b.onclick = function(){ switchView(b.dataset.
     
     console.log('✅ Kezle Lab Pro inicializado | Cidades:', CITIES.length, '| Peças:', PARTS.length);
   } catch(e){
-    console.error('Init falhou:', e);
+    console.error('Init falhou:', e, e && e.stack);
   }
 })();
 

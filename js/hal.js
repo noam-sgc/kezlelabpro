@@ -176,17 +176,18 @@ function allColors(){
 }
 HAL.colorConsts = allColors;
 
-HAL.screen = function(ctrls, needTouch){
-  const inst = SC().findScreen(ctrls, needTouch);
+HAL.screen = function(ctrls, needTouch, hint){
+  const inst = SC().findScreen(ctrls, needTouch, hint);
   return inst;
 };
 const sink = () => { const f = () => 0; return new Proxy({}, { get: () => f }); };
 
 HAL.gfx = function(ctrls, opts){
-  const inst = HAL.screen(ctrls, false);
+  const inst = HAL.screen(ctrls, false, opts && opts.hint);
   if(!inst){ serialOut('⚠ Nenhuma tela compatível encontrada na bancada — adicione um display.', 'warn'); return sink(); }
   const gx = SC().makeGfx(inst);
   const sc = gx.sc;
+  sc.claimed = true; // cada objeto de display do programa fica com uma tela diferente
   gx.claim();
   const T = { datum: 0, font: 1, wrap: true };
   const num = (a, d) => (typeof a === 'number' ? a : d);

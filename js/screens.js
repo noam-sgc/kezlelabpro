@@ -425,7 +425,7 @@ function bindTouch(inst, cv, fingerEl){
     e.preventDefault(); e.stopPropagation();
     cv.setPointerCapture(e.pointerId);
     if(!SIM.on || !powered(inst)){ if(!sc.warned){ sc.warned = 1; toast('Tela sem energia — ligue a ⏻ Simulação e alimente o módulo para usar o toque', 'warn'); setTimeout(() => sc.warned = 0, 4000); } return; }
-    if(!sc.spec.touch){ if(!sc.warnedT){ sc.warnedT = 1; toast(inst.def.n + ' não tem touch (apenas exibição).', 'warn'); setTimeout(() => sc.warnedT = 0, 4000); } return; }
+    if(!sc.spec.touch) return; // sem touch: nada acontece, como no hardware real
     const p = pos(e); place(p);
     const [lx, ly] = toLogical(sc, p.nx, p.ny);
     t.pts.set(e.pointerId, { x: lx, y: ly, nx: p.nx, ny: p.ny, id: e.pointerId, t0: performance.now(), x0: lx, y0: ly });
@@ -469,14 +469,26 @@ SCR.readTouch = function(inst){
   return { n: pts.length, pts: pts.map(p => ({ x: Math.round(p.x), y: Math.round(p.y), id: p.id, z: sc.spec.touch === 'res' ? 1200 : 40 })), gesture: (performance.now() - (t.gestureT || 0) < 600) ? t.gesture : 0 };
 };
 SCR.touchScreens = () => BENCH.parts.filter(p => p.def.scr && p.def.scr.touch);
-SCR.findScreen = function(ctrls, needTouch){
+SCR.findScreen = function(ctrls, needTouch, hint){
   const all = BENCH.parts.filter(p => p.def.scr);
-  const pw = all.filter(p => powered(p));
-  const pool = pw.length ? pw : all;
+  const mcu = typeof CIRCUIT !== 'undefined' ? CIRCUIT.primaryMcu() : null;
+  const wired = p => p.def.cat === 'mcu' ? p === mcu : (typeof CONN !== 'undefined' && CONN && CONN.mcuOf(p) != null);
+  const free = p => !p.scr || !p.scr.claimed;
+  const nums = (hint || []).filter(x => typeof x === 'number');
+  const resMatch = p => nums.length >= 2 && nums.some((a, i) => { const b = nums[i + 1]; return b != null && ((a === p.def.scr.W && b === p.def.scr.H) || (a === p.def.scr.H && b === p.def.scr.W)); });
+  // prioridade: ainda livre > ligada ao MCU > energizada > resolução igual à pedida no construtor
+  const rank = p => (free(p) ? 16 : 0) + (wired(p) ? 8 : 0) + (powered(p) ? 4 : 0) + (resMatch(p) ? 2 : 0);
+  const byRank = (a, b) => rank(b) - rank(a);
+  const pool = all.slice().sort(byRank);
   let r = null;
-  if(needTouch) r = pool.find(p => p.def.scr.touch) || all.find(p => p.def.scr.touch);
-  if(!r && ctrls && ctrls.length) r = pool.find(p => ctrls.includes(p.def.scr.ctrl)) || all.find(p => ctrls.includes(p.def.scr.ctrl));
-  if(!r) r = pool[0] || all[0] || null;
+  if(needTouch) r = pool.find(p => p.def.scr.touch);
+  if(!r && ctrls && ctrls.length){
+    const m = pool.filter(p => ctrls.includes(p.def.scr.ctrl));
+    // se houver uma tela livre de outra família com a resolução pedida, ela também vale (ex.: ST7789() num painel ST7735)
+    const exact = pool.find(p => free(p) && resMatch(p) && (ctrls.includes(p.def.scr.ctrl) || p.def.scr.type === 'tft'));
+    r = (m[0] && free(m[0])) ? m[0] : (exact || m[0] || null);
+  }
+  if(!r) r = pool[0] || null;
   return r;
 };
 
@@ -499,16 +511,14 @@ function idleDraw(inst){
     epdRefresh(sc); return;
   }
   if(isMono){
+    // OLED/LCD monocromático sem firmware: apagado/vazio (o conteúdo vem só do programa do usuário)
     gx.fill(0);
-    gx.rect(0, 0, W, H, 1);
-    const s = W >= 200 ? 2 : 1;
-    gx.text('Kezle Lab Pro', Math.max(3, (W - 13 * 6 * s) / 2), 4, 1, null, s);
-    gx.text(spec.W + 'x' + spec.H, 4, H - 12, 1);
-    gx.text(inst.def.n.split(' ')[0] + ' ok', 4, 4 + 10 * s + 4, 1);
-    // barra animada
-    const bw = W - 8; gx.rect(4, H / 2 + 6, bw, 6, 1);
-    gx.fillRect(4, H / 2 + 6, Math.round(bw * ((Date.now() / 40) % 100) / 100), 6, 1);
-    markDirty(sc); sc.idleAnim = true; return;
+    markDirty(sc); return;
+  }
+  if(!spec.touch){
+    // sem touch e sem programa: como no hardware real, só o painel aceso/apagado (não inventa conteúdo)
+    gx.fill(spec.type === 'mono' ? 0 : 0xFFFF);
+    markDirty(sc); return;
   }
   const bg = '#0b1220';
   gx.fill(bg);
@@ -518,13 +528,6 @@ function idleDraw(inst){
   gx.text('Kezle Touch', 6 * S, Math.round((hh - 8 * S) / 2), '#fff', null, S);
   const now = new Date().toTimeString().slice(0, 5);
   gx.text(now, W - 6 * S - 5 * 6 * S, Math.round((hh - 8 * S) / 2), '#bfdbfe', null, S);
-  if(!spec.touch){
-    gx.text(spec.W + 'x' + spec.H + ' sem touch', 6 * S, hh + 8 * S, '#94a3b8', null, S);
-    gx.text('aguardando programa...', 6 * S, hh + 20 * S, '#64748b', null, S);
-    const cx = W / 2, cy = H * 0.65, r = Math.min(W, H) * 0.22;
-    for(let i = 0; i < 6; i++) gx.fillCircle(cx + Math.cos(i * 1.047) * r, cy + Math.sin(i * 1.047) * r, Math.max(2, r / 6), PAL[i]);
-    markDirty(sc); return;
-  }
   // grade de botões
   const labels = ['LED', 'Wi-Fi', 'BLE', 'Backlight', 'Buzzer', 'Reset'];
   const cols = W > H ? 3 : 2, rows = Math.ceil(labels.length / cols);
@@ -617,7 +620,7 @@ setInterval(() => { for(const p of BENCH.parts){ if(p.scr && p.scr.idleAnim && !
 setInterval(() => { for(const p of BENCH.parts){ if(p.scr && !p.scr.user && p.scr.idle && p.scr.spec.touch && powered(p) && !p.scr.touch.down) { const T = new Date().toTimeString().slice(0, 5); if(p.scr._t !== T){ p.scr._t = T; idleDraw(p); } } } }, 5000);
 
 SCR.onRunStart = function(){
-  for(const p of BENCH.parts){ if(p.scr){ p.scr.user = false; p.scr.rot = 0; p.scr.cursor = { x: 0, y: 0 }; p.scr.textColor = p.def.scr.fg || '#fff'; p.scr.textBg = null; p.scr.textSize = 1; p.scr.backlight = 1; p.scr.invert = false; SCR.updateLook(p.scr); } }
+  for(const p of BENCH.parts){ if(p.scr){ p.scr.user = false; p.scr.claimed = false; p.scr.rot = 0; p.scr.cursor = { x: 0, y: 0 }; p.scr.textColor = p.def.scr.fg || '#fff'; p.scr.textBg = null; p.scr.textSize = 1; p.scr.backlight = 1; p.scr.invert = false; SCR.updateLook(p.scr); } }
 };
 
 /* OLED legado (demo / dblclick / SSD1306 antigo) escreve no framebuffer novo */
