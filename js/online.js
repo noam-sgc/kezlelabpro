@@ -175,12 +175,14 @@ function autoWire(mcu, parts){
   const gnd = mcu.def.pinNames.find(n => /^GND/.test(n));
   const W = (a, ai, b, bi) => { if(ai >= 0 && bi >= 0) BENCH.wires.push({ id: uid(), a: { p: a.id, i: ai }, b: { p: b.id, i: bi }, color: '#ef4444', fold: 0, dir: 1 }); };
   const cols = ['#ef4444', '#fbbf24', '#3b82f6', '#22c55e', '#a855f7', '#f97316'];
-  let ci = 0;
+  let ci = 0, na = 0;
+  const ANA = [34, 35, 32, 33, 36, 39];
   for(const q of parts){
     const v = find(q, /^(VCC|VIN|VDD|\+|\+5V|5V|VM)$/i), g = find(q, /^(GND|G|−|-|K)$/i);
     if(v >= 0 && g >= 0){
-      const use5 = (q.def.vcc || 3.3) >= 4.5 && mcu.def.pinNames.includes('5V');
-      W(mcu, nm(mcu, use5 ? '5V' : v33), q, v); W(mcu, nm(mcu, gnd), q, g);
+      const p5 = ['5V', 'VIN', 'VBUS'].find(n => mcu.def.pinNames.includes(n));
+      const use5 = (q.def.vcc || 3.3) >= 4.5 && !!p5;
+      W(mcu, nm(mcu, use5 ? p5 : v33), q, v); W(mcu, nm(mcu, gnd), q, g);
       BENCH.wires[BENCH.wires.length - 2].color = '#ef4444'; BENCH.wires[BENCH.wires.length - 1].color = '#0f172a';
     }
     const s = find(q, /^SDA$/i), c = find(q, /^SCL$/i);
@@ -188,7 +190,7 @@ function autoWire(mcu, parts){
     const sig = find(q, /^(DATA|OUT|AO|SIG|IN|DIN|AO|VRx|SIG1)$/i);
     if(sig >= 0 && !(s >= 0)){
       const analog = (q.def.sk && /^(luxA|gas|soil|rain|ph|tds|snd|curr|volt|dust|hall|wlev)$/.test(q.def.sk)) || q.def.kind === 'pot' || q.def.kind === 'joy' || /^(AO|VRx)$/.test(q.def.pinNames[sig]);
-      const gp = analog ? 34 : (q.def.dgpio != null ? q.def.dgpio : 4);
+      const gp = analog ? ANA[na++ % ANA.length] : (q.def.dgpio != null ? q.def.dgpio : 4);
       let pin = /uno|nano/.test(id) ? (analog ? 'A0' : 'D' + gp) : /pico/.test(id) ? (analog ? 'GP26' : 'GP' + gp) : 'IO' + gp;
       if(analog && /esp32/.test(id) === false && !/uno|nano|pico/.test(id)) pin = mcu.def.pinNames.includes('A0') ? 'A0' : pin;
       if(mcu.def.pinNames.includes(pin)){ W(mcu, nm(mcu, pin), q, sig); BENCH.wires[BENCH.wires.length - 1].color = cols[ci++ % cols.length]; }
