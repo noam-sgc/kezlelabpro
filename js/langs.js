@@ -154,7 +154,7 @@ function patchModules(mods){
   // displays
   const dispCtor = ctrls => function(...a){
     const [pa, kw] = kwSplit(a);
-    const g = HAL.gfx(ctrls);
+    const g = HAL.gfx(ctrls, { hint: pa });
     const rot = kw.rotation !== undefined ? kw.rotation : undefined;
     if(rot !== undefined) g.setRotation(rot);
     return g;
@@ -318,6 +318,20 @@ window.analyzeHardware = function(src){
   const a = _ah2(src);
   a.errors = a.errors.filter(e => !/^(Atuador GPIO|Entrada analógica GPIO|DHT ligado no GPIO)/.test(e));
   a.items.forEach(it => { if(/^(Atuador|Entrada anal)/.test(it.label)){ it.powered = true; it.wired = true; } });
+  // OLEDs agora são peças "screen" (kind 'screen', scr.type oled/mono): refaz a checagem sobre elas
+  if(/SSD1306|SH1106|SSD1322|U8G2|u8g2|Adafruit_SSD|Adafruit_SH/.test(src)){
+    a.errors = a.errors.filter(e => !/^Display OLED/.test(e));
+    a.items = a.items.filter(it => !/^Display OLED/.test(it.label));
+    const oleds = BENCH.parts.filter(p => p.def.scr && (p.def.scr.type === 'oled' || p.def.scr.type === 'mono') && /ssd13|sh11|ssd13|st7920|pcd/.test(p.def.scr.ctrl));
+    const any = oleds.length ? oleds : BENCH.parts.filter(p => p.def.kind === 'oled');
+    const o = any[0];
+    const wired = !!(o && CONN && (o.def.cat === 'mcu' || CONN.mcuOf(o) != null));
+    const pw = !!(o && POWER && POWER.powered(o.id));
+    a.items.push({ label: 'Display OLED (I2C)', present: !!o, wired, powered: pw });
+    if(!o) a.errors.push('Display OLED (I2C) não está na bancada.');
+    else if(!wired) a.errors.push('Display OLED (I2C) sem caminho elétrico até o MCU — use 🔗 Conectar (VCC, GND, SDA, SCL).');
+    else if(!pw && SIM.on) a.errors.push('Display OLED (I2C) sem energia — verifique VCC/GND.');
+  }
   return a;
 };
 
