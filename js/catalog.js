@@ -474,7 +474,8 @@ M('circuit_playground', 'Circuit Playground Express', 'Adafruit', 'nano', { chip
     const px = mm => Math.round(mm * 3.6 / 2) * 2;
     const d = Object.assign({}, b, { id, n, brand }, o || {});
     d.scr = Object.assign({}, b.scr || { type: 'tft', touch: null, round: false, ctrl: 'mcu', fg: '#fff', bg: '#000', pcb: '#111' }, scr);
-    d.scr.x = px(d.scr.x); d.scr.y = px(d.scr.y); d.scr.w = px(d.scr.w); d.scr.h = px(d.scr.h);
+    // só converte mm->px o que veio em mm no override; o que vem da placa base já está em px (antes era multiplicado 2×: tela vazava)
+    ['x', 'y', 'w', 'h'].forEach(k => { if(scr && k in scr) d.scr[k] = px(scr[k]); });
     if(o && o.pcb){ d.w = px(o.pcb[0]); d.h = px(o.pcb[1]); }
     delete d._holes; add(d);
   };
