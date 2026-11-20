@@ -231,7 +231,7 @@ function analogFrac(inst){
   const n = (x, a, b) => clamp((x - a) / (b - a), 0, 1);
   switch(d.sk){
     case 'luxA': return n(v.raw != null ? v.raw : 2000, 0, 4095);
-    case 'gas': return n(Math.log10(Math.max(v.ppm || 400, 10)), 1, 4);
+    case 'gas': return n(Math.log10(Math.max(v.ppm || 400, 10)), 1.5, 4.5);
     case 'soil': return 1 - n(v.moisture != null ? v.moisture : 40, 0, 100) * 0.8;
     case 'rain': return 1 - n(v.wetness || 0, 0, 100);
     case 'wlev': return n(v.level || 0, 0, 100);
