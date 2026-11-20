@@ -2588,6 +2588,17 @@ function buildCities(){
       fl:a.fl || flagOf(a.co || a.iso2 || '')
     };
   });
+  /* une nomes diferentes da mesma cidade (Berlim/Berlin, Hamburgo/Hamburg…) em uma só entrada com apelidos */
+  (function(){
+    const out = [], grid = {};
+    for(const c of CITIES){
+      const key = c.co + ':' + Math.round(c.lat * 8) + ':' + Math.round(c.lon * 8);
+      const near = [0, 1, -1].flatMap(a => [0, 1, -1].map(b => grid[c.co + ':' + (Math.round(c.lat * 8) + a) + ':' + (Math.round(c.lon * 8) + b)])).find(x => x && Math.abs(x.lat - c.lat) < 0.07 && Math.abs(x.lon - c.lon) < 0.07);
+      if(near){ if(near.n.toLowerCase() !== c.n.toLowerCase()) (near.al = near.al || []).push(c.n); continue; }
+      grid[key] = c; out.push(c);
+    }
+    CITIES = out;
+  })();
   window.CITIES = CITIES;
   console.log('✅ Cidades carregadas:', CITIES.length);
 }
@@ -2676,9 +2687,10 @@ function searchCities(q, limit){
   q = _norm(q); if(!q) return CITIES.slice(0, limit || 12);
   const out = [];
   for(const c of CITIES){
-    if(!c._k) c._k = _norm(c.n);
-    const k = c._k, i = k.indexOf(q);
-    const sc = k === q ? 0 : k.startsWith(q) ? 1 : i > 0 ? 2 : (_norm(c.co) === q ? 3 : 9);
+    if(!c._k) c._k = [_norm(c.n)].concat((c.al || []).map(_norm));
+    let sc = 9;
+    for(const k of c._k){ const i = k.indexOf(q); const v = k === q ? 0 : k.startsWith(q) ? 1 : i > 0 ? 2 : 9; if(v < sc) sc = v; }
+    if(sc === 9 && _norm(c.co) === q) sc = 3;
     if(sc < 9) out.push([sc, c]);
   }
   out.sort((x, y) => x[0] - y[0] || x[1].n.length - y[1].n.length);
@@ -2704,7 +2716,7 @@ function initCitySearch(){
   let act = -1, list = [];
   const render = () => {
     list = searchCities(input.value, 14); act = list.length ? 0 : -1;
-    box.innerHTML = list.length ? list.map((c, i) => '<div class="cityOpt" data-i="' + i + '" style="padding:7px 10px;cursor:pointer;display:flex;gap:8px;align-items:center;' + (i === act ? 'background:rgba(56,189,248,.18)' : '') + '"><span>' + (c.fl || '🌐') + '</span><b>' + c.n + '</b><span style="opacity:.6">' + c.co + ' · ' + c.alt + ' m</span></div>').join('') : '<div style="padding:8px 10px;opacity:.7">Nenhuma cidade encontrada</div>';
+    box.innerHTML = list.length ? list.map((c, i) => '<div class="cityOpt" data-i="' + i + '" style="padding:7px 10px;cursor:pointer;display:flex;gap:8px;align-items:center;' + (i === act ? 'background:rgba(56,189,248,.18)' : '') + '"><span>' + (c.fl || '🌐') + '</span><b>' + c.n + '</b>' + (c.al && c.al.length ? '<span style="opacity:.55">(' + c.al[0] + ')</span>' : '') + '<span style="opacity:.6">' + c.co + ' · ' + c.alt + ' m</span></div>').join('') : '<div style="padding:8px 10px;opacity:.7">Nenhuma cidade encontrada</div>';
     box.style.display = 'block';
   };
   const mark = () => [...box.querySelectorAll('.cityOpt')].forEach((e, i) => e.style.background = i === act ? 'rgba(56,189,248,.18)' : '');
@@ -9042,13 +9054,13 @@ function renderProjects(){
 const SEEDS = [
   { id: 'seed0', t: 'Estação Meteorológica Solar', a: 'Kezle Corporation Team', f: '🏢', likes: 0, native: true,
     parts: [['esp32', 70, 90], ['bmp280', 320, 100], ['dht22', 320, 200], ['oled1306', 480, 90], ['temt6000', 480, 220]],
-    code: 'from machine import I2C\nfrom bmp280 import BMP280\nfrom dht import DHT22\nfrom time import sleep\ni2c = I2C(0)\nbmp = BMP280(i2c)\nd = DHT22(4)\nwhile True:\n    d.measure()\n    print(f"Temp: {bmp.temperature} | Umidade: {d.humidity()}")\n    sleep(5)' },
+    code: 'from machine import I2C, Pin, ADC\nfrom bmp280 import BMP280\nfrom dht import DHT22\nfrom ssd1306 import SSD1306_I2C\nfrom time import sleep\n\ni2c = I2C(0)\noled = SSD1306_I2C(128, 64, i2c)\nbmp = BMP280(i2c)\nd = DHT22(Pin(4))\nluz = ADC(Pin(34))\n\nwhile True:\n    d.measure()\n    t = d.temperature()\n    u = d.humidity()\n    p = bmp.pressure / 100\n    lux = luz.read() * 100 // 4095\n    oled.fill(0)\n    oled.text("Estacao Solar", 0, 0)\n    oled.text("Temp: %.1f C" % t, 0, 14)\n    oled.text("Umid: %.0f %%" % u, 0, 26)\n    oled.text("Pres: %.0f hPa" % p, 0, 38)\n    oled.text("Luz : %d %%" % lux, 0, 50)\n    oled.show()\n    print("Temp:", t, "Umid:", u, "Pres:", p, "Luz:", lux)\n    sleep(1)' },
   { id: 'seed1', t: 'Braço Robótico BLE 4DOF', a: 'ADM-Kezle', f: '🛡️', likes: 0, native: true,
     parts: [['esp32s3', 70, 90], ['sg90', 320, 80], ['mg996r', 460, 80], ['sg90', 320, 180], ['joy', 620, 120]],
     code: 'from machine import Pin, PWM, ADC\nfrom time import sleep_ms\ns1 = PWM(Pin(13), freq=50)\njoy = ADC(Pin(34))\nwhile True:\n    v = joy.read()\n    s1.duty(int(v / 4095 * 102))\n    sleep_ms(30)' },
   { id: 'seed2', t: 'Monitor de Qualidade do Ar', a: 'Kezle Corporation Team', f: '🏢', likes: 0, native: true,
     parts: [['esp32', 70, 90], ['mq135', 320, 90], ['oled1306', 480, 90], ['buzzA', 320, 210]],
-    code: 'from machine import Pin, ADC\nfrom time import sleep\ngas = ADC(Pin(35))\nbuzz = Pin(14, Pin.OUT)\nwhile True:\n    v = gas.read()\n    print(f"AQI: {v}")\n    if v > 2800:\n        buzz.on()\n    else:\n        buzz.off()\n    sleep(1)' },
+    code: 'from machine import Pin, ADC, I2C\nfrom ssd1306 import SSD1306_I2C\nfrom time import sleep\n\noled = SSD1306_I2C(128, 64, I2C(0))\ngas = ADC(Pin(35))\nbuzz = Pin(14, Pin.OUT)\n\nwhile True:\n    v = gas.read()\n    alerta = v > 2800\n    oled.fill(0)\n    oled.text("Qualidade do Ar", 0, 0)\n    oled.text("AQI: %d" % v, 0, 20)\n    oled.rect(0, 36, 128, 10, 1)\n    oled.fill_rect(0, 36, v * 128 // 4095, 10, 1)\n    oled.text("PERIGO!" if alerta else "Ar OK", 0, 52)\n    oled.show()\n    buzz.value(1 if alerta else 0)\n    print("AQI:", v)\n    sleep(1)' },
   { id: 'seed3', t: 'Rega Automática de Horta', a: 'ADM-Kezle', f: '🛡️', likes: 0, native: true,
     parts: [['nodemcu', 70, 90], ['soil', 320, 90], ['relay', 470, 90], ['dht11', 320, 200]],
     code: 'from machine import Pin, ADC\nfrom time import sleep\nsolo = ADC(Pin(34))\nrele = Pin(23, Pin.OUT)\nwhile True:\n    m = solo.read()\n    print(f"Solo: {m}")\n    if m > 2600:\n        rele.on()\n    else:\n        rele.off()\n    sleep(3)' },
@@ -9367,7 +9379,7 @@ $$('.navBtn').forEach(function(b){ b.onclick = function(){ switchView(b.dataset.
 <script src="js/studio.js"></script>
 <script src="js/rtc.js"></script>
 <script src="js/blocks.js"></script>
-<script src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+<script src="js/i18n.js"></script>
 <script>
 function googleTranslateElementInit(){ new google.translate.TranslateElement({ pageLanguage: 'pt', autoDisplay: false }, 'google_translate_element'); }
 
@@ -9395,15 +9407,6 @@ function googleTranslateElementInit(){ new google.translate.TranslateElement({ p
     ['sa','संस्कृतम्'],['ti','ትግርኛ'],['tw','Twi'],['wo','Wolof']
   ];
   
-  const sel = document.getElementById('langSel');
-  sel.innerHTML = '<option value="">🌐 Idioma</option>' + L.map(function(x){ return '<option value="' + x[0] + '">' + x[1] + '</option>'; }).join('');
-  
-  sel.onchange = function(){
-    const c = sel.value;
-    if(!c){ document.cookie = 'googtrans=;path=/'; location.reload(); return; }
-    document.cookie = 'googtrans=/pt/' + c + ';path=/';
-    location.reload();
-  };
 })();
 
 /* ===== GARANTIA: auth sempre clicável ===== */
