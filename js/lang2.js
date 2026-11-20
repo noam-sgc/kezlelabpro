@@ -42,7 +42,7 @@ function ctok(src){
       out.push({ t: 'chr', v: ch, ch: s, line }); i = j + 1; continue;
     }
     if(/[0-9]/.test(c) || (c === '.' && /[0-9]/.test(src[i + 1] || ''))){
-      const m = src.slice(i).match(/^(0[xX][0-9a-fA-F_]+|0[bB][01_]+|(?:\d[\d_]*\.?[\d_]*|\.\d[\d_]*)(?:[eE][+-]?\d+)?)([uUlLfF]*|_?(?:[iuf](?:8|16|32|64|128|size)))/);
+      const m = src.slice(i).match(/^(0[xX][0-9a-fA-F_]+|0[bB][01_]+|(?:\d[\d_]*(?:\.(?!\.)[\d_]*)?|\.\d[\d_]*)(?:[eE][+-]?\d+)?)([uUlLfF]*|_?(?:[iuf](?:8|16|32|64|128|size)))/);
       let t = m[1].replace(/_/g, '');
       const isF = !/^0[xXbB]/.test(t) && (/[.eE]/.test(t) || /[fF]/.test(m[2]) && !/^0[xX]/.test(t) || /^_?f/.test(m[2]));
       if(/^0[bB]/.test(t)) t = String(parseInt(t.slice(2), 2));
@@ -185,7 +185,8 @@ function cApi(src){
   // C helpers para display (estilo "tft_*")
   let g_ = null;
   const G = () => g_ || (g_ = HAL.gfx(null));
-  Object.assign(api, { tft_init: () => { G(); }, tft_fill: c => G().fillScreen(c), tft_text: (s, x, y, c) => G().drawString(s, x, y) || (G().setTextColor(c), G().drawString(s, x, y)), tft_circle: (x, y, r, c) => G().fillCircle(x, y, r, c), tft_rect: (x, y, w, h, c) => G().fillRect(x, y, w, h, c), tft_line: (a, b, c, d, e) => G().drawLine(a, b, c, d, e), tft_pixel: (x, y, c) => G().drawPixel(x, y, c) });
+  let T_ = null;
+  Object.assign(api, { tft_touched: (rx, ry) => { T_ = T_ || HAL.touch(); return T_ && T_.getTouch(rx, ry) ? 1 : 0; }, tft_init: () => { G(); }, tft_fill: c => G().fillScreen(c), tft_text: (s, x, y, c) => G().drawString(s, x, y) || (G().setTextColor(c), G().drawString(s, x, y)), tft_circle: (x, y, r, c) => G().fillCircle(x, y, r, c), tft_rect: (x, y, w, h, c) => G().fillRect(x, y, w, h, c), tft_line: (a, b, c, d, e) => G().drawLine(a, b, c, d, e), tft_pixel: (x, y, c) => G().drawPixel(x, y, c) });
   return api;
 }
 function makeM5(){

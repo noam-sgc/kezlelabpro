@@ -84,6 +84,7 @@ function goApi(){
     __idiv: (a, b) => { if(b === 0) throw new Error('panic: divisão inteira por zero'); return Math.trunc(a / b); }, __int: intf,
     Display: (...a) => nameProxy(HAL.gfx(a.length ? [].concat(a) : null)), Touch: () => { const t = HAL.touch(); return t ? nameProxy(Object.assign({}, t, { GetPoint: () => { const p = t.get_point() || { x: 0, y: 0, z: 0 }; return nameProxy({ x: p.x, y: p.y, z: p.z, X: p.x, Y: p.y, Z: p.z }); } })) : nameProxy({ touched: () => false }); },
     analogWrite: (p, v) => HAL.analogWrite(p, v, 255), delay: ms => HAL.delay(ms), millis: () => HAL.millis(), tone: (p, f) => HAL.tone(p, f), digitalWrite: (p, v) => HAL.digitalWrite(p, v), digitalRead: p => HAL.digitalRead(p), pinMode: (p, m) => HAL.pinMode(p, m),
+    OUTPUT: 1, INPUT: 0, INPUT_PULLUP: 2, HIGH: 1, LOW: 0, analogRead: p => HAL.analogRead(p), servoWrite: (p, a) => HAL.servoWrite(p, a), random: (a, b) => Math.floor(a + Math.random() * (b - a + 1)), mapRange: (v, a, b, c, d) => (v - a) * (d - c) / (b - a) + c,
     ts: null, nil: null, true: true, false: false, iota: 0
   };
   return api;
@@ -340,7 +341,7 @@ function rsApi(){
     Pin: { new: id => nameProxy(pinObj(id)) }, display: (...a) => nameProxy(HAL.gfx(a.length ? [].concat(a) : null)), touch: () => { const t = HAL.touch(); return nameProxy(t ? Object.assign({}, t, { get_point: () => { const p = t.get_point() || { x: 0, y: 0, z: 0 }; return nameProxy({ x: p.x, y: p.y, z: p.z }); } }) : { touched: () => false }); },
     __idiv: (a, b) => { if(b === 0) throw new Error('panic: divisão por zero'); return Math.trunc(a / b); }, __int: intf, __asI: v => intf(v), __asF: v => +v, __asU8: v => intf(v) & 255, __asU16: v => intf(v) & 65535, __asU32: v => intf(v) >>> 0, __asI8: v => (intf(v) << 24) >> 24, __asI16: v => (intf(v) << 16) >> 16, __asBool: v => !!v,
     delay_obj: { delay_ms: ms => HAL.delay(ms), delay_us: us => HAL.delayUs(us) }, timer: { delay_ms: ms => HAL.delay(ms) }, abs: Math.abs, sqrt: Math.sqrt, pow: Math.pow, sin: Math.sin, cos: Math.cos, PI: Math.PI,
-    __iter: x => Array.isArray(x) ? x : typeof x === 'string' ? [...x] : x, __iterRange: (a, b, incl) => { const r = []; for(let i = a; incl ? i <= b : i < b; i++) r.push(i); return r; }, rand_u32: () => Math.floor(Math.random() * 4294967296), random: Math.random
+    __iter: x => Array.isArray(x) ? x : typeof x === 'string' ? [...x] : x, __iterRange: (a, b, incl) => { const r = []; for(let i = a; incl ? i <= b : i < b; i++) r.push(i); return r; }, rand_u32: () => Math.floor(Math.random() * 4294967296), random: Math.random, random_range: (a, b) => Math.floor(a + Math.random() * (b - a + 1)), tone_ms: (p, f, d) => HAL.tone(p, f, d)
   };
   api.delay_obj_ = api.delay_obj;
   return api;
@@ -365,9 +366,19 @@ function rsTranspile(src){
       if(t.t === 'num'){ out.push(t.v); continue; } if(t.t === 'str'){ out.push('"' + t.v.replace(/"/g, '\\"') + '"'); continue; } if(t.t === 'chr'){ out.push(String(t.v)); continue; }
       if(t.t === 'id'){
         if(t.v === 'as' && nx){ // cast postfix
-          let last = out.pop();
-          // se o último termo foi ")" precisamos do primário completo: reconstrói
-          if(last === ')'){ let d = 1; const buf = [')']; while(out.length && d){ const x = out.pop(); buf.unshift(x); if(x === ')') d++; if(x === '(') d--; } if(out.length && /^[\w.]+$/.test(out[out.length - 1]) && !/^(if|while|match|return|let)$/.test(out[out.length - 1])) buf.unshift(out.pop()); last = buf.join(''); }
+          // extrai o termo primário completo antes de "as": ident, chamadas f(x), índices a[i] e cadeias a.b().c
+          const popOne = () => {
+            const t0 = out.pop();
+            if(t0 === ')' || t0 === ']'){
+              const open = t0 === ')' ? '(' : '['; let d = 1; const tmp = [t0];
+              while(out.length && d){ const x = out.pop(); tmp.unshift(x); if(x === t0) d++; if(x === open) d--; }
+              if(out.length && /^\w+$/.test(out[out.length - 1]) && !/^(if|while|match|return|let|in|loop)$/.test(out[out.length - 1])) tmp.unshift(out.pop());
+              return tmp.join('');
+            }
+            return t0;
+          };
+          let last = popOne();
+          while(out.length && out[out.length - 1] === '.'){ out.pop(); last = popOne() + '.' + last; }
           const ty = nx.v; j++;
           const fn = INTT.has(ty) ? ({ u8: '__asU8', u16: '__asU16', u32: '__asU32', i8: '__asI8', i16: '__asI16' }[ty] || '__asI') : FLT.has(ty) ? '__asF' : ty === 'bool' ? '__asBool' : '';
           out.push(fn ? fn + '(' + last + ')' : last); continue;
