@@ -177,6 +177,7 @@ function rotOff(o, w, h, rot){
   }
   return o;
 }
+window.KezleRaw = rawOffsets;
 window.pinOffsets = function(inst){
   const raw = rawOffsets(inst);
   const rot = (inst.rot || 0) & 3;
