@@ -224,6 +224,25 @@ h1,h2,h3{font-weight:650}
 #edWrap{flex:1;display:flex;min-height:0;background:#0a1120}
 #gutter{margin:0;padding:16px 8px;background:#0a0f1c;color:#3f587a;font:13px/1.6 var(--mono);text-align:right;overflow:hidden;user-select:none;border-right:1px solid var(--line);min-width:46px;white-space:pre}
 #pyEditor{flex:1;resize:none;border:none;border-radius:0;background:#0a1120;color:#cfe3ff;font:13px/1.6 var(--mono);padding:16px;tab-size:4;overflow:auto;white-space:pre}
+
+/* ===== Syntax highlighting ===== */
+#edStack{flex:1;position:relative;display:flex;min-width:0;min-height:0}
+#hlLayer{position:absolute;inset:0;margin:0;padding:16px 40px 40px 16px;overflow:hidden;pointer-events:none;background:#0a1120;color:#cfe3ff;font:13px/1.6 var(--mono);tab-size:4;white-space:pre;word-wrap:normal}
+#hlLayer code{font:inherit;white-space:inherit;display:block}
+#pyEditor.hlOn{position:relative;flex:1;background:transparent!important;color:transparent!important;-webkit-text-fill-color:transparent;caret-color:#fff;z-index:1}
+#pyEditor.hlOn::selection{background:rgba(56,189,248,.35);-webkit-text-fill-color:transparent}
+.hl-kw{color:#c792ea;font-weight:600}
+.hl-fn{color:#82aaff;font-weight:600}
+.hl-call{color:#82aaff}
+.hl-bi{color:#7fdbca}
+.hl-cls,.hl-type{color:#ffcb6b}
+.hl-str{color:#c3e88d}
+.hl-num{color:#f78c6c}
+.hl-const{color:#ff9d7a}
+.hl-com{color:#5c7089;font-style:italic}
+.hl-pp,.hl-dec,.hl-mac{color:#f07178}
+.hl-self,.hl-lt{color:#ff5370;font-style:italic}
+#bkCode.hlStatic{color:#cfe3ff}
 #edStatus{display:flex;gap:14px;align-items:center;padding:5px 12px;background:var(--panel);border-top:1px solid var(--line);font:11px var(--mono);color:var(--dim);flex-wrap:wrap}
 #edStatus span.ok{color:var(--ac2)}#edStatus span.bad{color:var(--err)}#edStatus span.warn{color:var(--warn)}
 #pyRight{display:flex;flex-direction:column;min-height:0}
@@ -9060,7 +9079,7 @@ const SEEDS = [
     code: 'from machine import Pin, PWM, ADC\nfrom time import sleep_ms\ns1 = PWM(Pin(13), freq=50)\njoy = ADC(Pin(34))\nwhile True:\n    v = joy.read()\n    s1.duty(int(v / 4095 * 102))\n    sleep_ms(30)' },
   { id: 'seed2', t: 'Monitor de Qualidade do Ar', a: 'Kezle Corporation Team', f: '🏢', likes: 0, native: true,
     parts: [['esp32', 70, 90], ['mq135', 320, 90], ['oled1306', 480, 90], ['buzzA', 320, 210]],
-    code: 'from machine import Pin, ADC, I2C\nfrom ssd1306 import SSD1306_I2C\nfrom time import sleep\n\noled = SSD1306_I2C(128, 64, I2C(0))\ngas = ADC(Pin(35))\nbuzz = Pin(14, Pin.OUT)\n\nwhile True:\n    v = gas.read()\n    alerta = v > 2800\n    oled.fill(0)\n    oled.text("Qualidade do Ar", 0, 0)\n    oled.text("AQI: %d" % v, 0, 20)\n    oled.rect(0, 36, 128, 10, 1)\n    oled.fill_rect(0, 36, v * 128 // 4095, 10, 1)\n    oled.text("PERIGO!" if alerta else "Ar OK", 0, 52)\n    oled.show()\n    buzz.value(1 if alerta else 0)\n    print("AQI:", v)\n    sleep(1)' },
+    code: 'from machine import Pin, ADC, I2C\nfrom ssd1306 import SSD1306_I2C\nfrom time import sleep\n\noled = SSD1306_I2C(128, 64, I2C(0))\ngas = ADC(Pin(34))\nbuzz = Pin(14, Pin.OUT)\n\nwhile True:\n    v = gas.read()\n    alerta = v > 2800\n    oled.fill(0)\n    oled.text("Qualidade do Ar", 0, 0)\n    oled.text("AQI: %d" % v, 0, 20)\n    oled.rect(0, 36, 128, 10, 1)\n    oled.fill_rect(0, 36, v * 128 // 4095, 10, 1)\n    oled.text("PERIGO!" if alerta else "Ar OK", 0, 52)\n    oled.show()\n    buzz.value(1 if alerta else 0)\n    print("AQI:", v)\n    sleep(1)' },
   { id: 'seed3', t: 'Rega Automática de Horta', a: 'ADM-Kezle', f: '🛡️', likes: 0, native: true,
     parts: [['nodemcu', 70, 90], ['soil', 320, 90], ['relay', 470, 90], ['dht11', 320, 200]],
     code: 'from machine import Pin, ADC\nfrom time import sleep\nsolo = ADC(Pin(34))\nrele = Pin(23, Pin.OUT)\nwhile True:\n    m = solo.read()\n    print(f"Solo: {m}")\n    if m > 2600:\n        rele.on()\n    else:\n        rele.off()\n    sleep(3)' },
@@ -9380,6 +9399,8 @@ $$('.navBtn').forEach(function(b){ b.onclick = function(){ switchView(b.dataset.
 <script src="js/rtc.js"></script>
 <script src="js/blocks.js"></script>
 <script src="js/i18n.js"></script>
+<script src="js/highlight.js"></script>
+<script src="js/passives.js"></script>
 <script>
 function googleTranslateElementInit(){ new google.translate.TranslateElement({ pageLanguage: 'pt', autoDisplay: false }, 'google_translate_element'); }
 
