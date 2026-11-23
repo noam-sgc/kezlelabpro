@@ -224,6 +224,25 @@ h1,h2,h3{font-weight:650}
 #edWrap{flex:1;display:flex;min-height:0;background:#0a1120}
 #gutter{margin:0;padding:16px 8px;background:#0a0f1c;color:#3f587a;font:13px/1.6 var(--mono);text-align:right;overflow:hidden;user-select:none;border-right:1px solid var(--line);min-width:46px;white-space:pre}
 #pyEditor{flex:1;resize:none;border:none;border-radius:0;background:#0a1120;color:#cfe3ff;font:13px/1.6 var(--mono);padding:16px;tab-size:4;overflow:auto;white-space:pre}
+
+/* ===== Syntax highlighting ===== */
+#edStack{flex:1;position:relative;display:flex;min-width:0;min-height:0}
+#hlLayer{position:absolute;inset:0;margin:0;padding:16px 40px 40px 16px;overflow:hidden;pointer-events:none;background:#0a1120;color:#cfe3ff;font:13px/1.6 var(--mono);tab-size:4;white-space:pre;word-wrap:normal}
+#hlLayer code{font:inherit;white-space:inherit;display:block}
+#pyEditor.hlOn{position:relative;flex:1;background:transparent!important;color:transparent!important;-webkit-text-fill-color:transparent;caret-color:#fff;z-index:1}
+#pyEditor.hlOn::selection{background:rgba(56,189,248,.35);-webkit-text-fill-color:transparent}
+.hl-kw{color:#c792ea;font-weight:600}
+.hl-fn{color:#82aaff;font-weight:600}
+.hl-call{color:#82aaff}
+.hl-bi{color:#7fdbca}
+.hl-cls,.hl-type{color:#ffcb6b}
+.hl-str{color:#c3e88d}
+.hl-num{color:#f78c6c}
+.hl-const{color:#ff9d7a}
+.hl-com{color:#5c7089;font-style:italic}
+.hl-pp,.hl-dec,.hl-mac{color:#f07178}
+.hl-self,.hl-lt{color:#ff5370;font-style:italic}
+#bkCode.hlStatic{color:#cfe3ff}
 #edStatus{display:flex;gap:14px;align-items:center;padding:5px 12px;background:var(--panel);border-top:1px solid var(--line);font:11px var(--mono);color:var(--dim);flex-wrap:wrap}
 #edStatus span.ok{color:var(--ac2)}#edStatus span.bad{color:var(--err)}#edStatus span.warn{color:var(--warn)}
 #pyRight{display:flex;flex-direction:column;min-height:0}
@@ -9380,6 +9399,7 @@ $$('.navBtn').forEach(function(b){ b.onclick = function(){ switchView(b.dataset.
 <script src="js/rtc.js"></script>
 <script src="js/blocks.js"></script>
 <script src="js/i18n.js"></script>
+<script src="js/highlight.js"></script>
 <script>
 function googleTranslateElementInit(){ new google.translate.TranslateElement({ pageLanguage: 'pt', autoDisplay: false }, 'google_translate_element'); }
 

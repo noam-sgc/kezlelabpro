@@ -563,7 +563,7 @@ function regen(){
   const lang = ui.lang.value;
   let code = '';
   try { code = generate(lang); } catch(e){ code = '// erro ao gerar: ' + e.message; }
-  ui.code.textContent = code || '// arraste blocos para começar';
+  if(window.KezleHL && code) window.KezleHL.apply(ui.code, code, lang); else ui.code.textContent = code || '// arraste blocos para começar';
   document.getElementById('bkInfo').textContent = L[lang] + ' · ' + WS.scripts.reduce((n, s) => n + count(s.blocks), 0) + ' blocos';
 }
 const count = arr => arr.reduce((n, b) => n + 1 + count(b.b1) + count(b.b2) + Object.values(b.v).reduce((m, x) => m + count([x]), 0), 0);
