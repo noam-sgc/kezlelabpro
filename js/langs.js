@@ -340,6 +340,7 @@ window.runCode = async function(srcOverride){
   const lang = $('#pyLang').value;
   const src = srcOverride != null ? srcOverride : $('#pyEditor').value;
   stopCode();
+  if(!SIM.on){ toggleSim(); await new Promise(r => setTimeout(r, 120)); }   // rodar o código liga a simulação (como plugar a USB)
   const a = analyzeHardware(src);
   renderHwCheck();
   if(a.errors.length){ toast(a.errors[0], 'err'); serialOut('⛔ ' + a.errors[0], 'err'); return; }
