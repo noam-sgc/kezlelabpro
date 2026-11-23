@@ -301,6 +301,9 @@ IO('btn_arcade', 'Botão arcade 30 mm', 'Sanwa', 3.3, ['A1', 'A2', 'B1', 'B2'], 
 IO('btn_estop', 'Botão de emergência', 'Genérico', 24, ['NC1', 'NC2', 'NO1', 'NO2'], 'btn', { w: 76, h: 76 });
 IO('toggle_spdt', 'Chave alavanca SPDT', 'Genérico', 3.3, ['COM', 'NO', 'NC'], 'sw', { w: 60, h: 50 });
 IO('rocker', 'Chave gangorra (liga/desliga)', 'Genérico', 12, ['COM', 'NO', 'NC'], 'sw', { w: 60, h: 50 });
+IO('kcd1', 'Chave KCD1 (balancim)', 'KCD', 12, ['A', 'B'], 'rocker', { w: 56, h: 52, desc: 'Liga/desliga · 2, 3 ou 6 terminais nas propriedades' });
+IO('kcd1_3p', 'Chave KCD1 (balancim) 3 terminais', 'KCD', 12, ['COM', 'NO', 'NC'], 'rocker', { w: 56, h: 52 });
+IO('kcd1_6p', 'Chave KCD1 (balancim) 6 terminais DPDT', 'KCD', 12, ['COM1', 'NO1', 'NC1', 'COM2', 'NO2', 'NC2'], 'rocker', { w: 64, h: 52 });
 IO('slide_spdt', 'Chave deslizante SPDT', 'Genérico', 3.3, ['COM', 'NO', 'NC'], 'sw', { w: 56, h: 44 });
 IO('dip8', 'DIP switch ×8', 'Genérico', 3.3, ['1', '2', '3', '4', '5', '6', '7', '8'], 'dip', { w: 70, h: 48 });
 IO('pot_1k', 'Potenciômetro 1 kΩ', 'Bourns', 3.3, ['VCC', 'SIG', 'GND'], 'pot', { w: 52, h: 52, dgpio: 34, defaults: { rtotal: 1000 } });

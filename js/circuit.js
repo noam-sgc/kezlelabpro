@@ -429,7 +429,7 @@ function buildElements(net, dt){
     if(d.kind === 'd'){
       const zener = /zener/.test(d.id);
       const zm = d.id.match(/zener_(\d+)v(\d*)/);
-      const Vz = zener ? (zm ? parseFloat(zm[1] + '.' + (zm[2] || '0')) : 5.1) : 0;
+      const Vz = zener ? (+p.vz || (zm ? parseFloat(zm[1] + '.' + (zm[2] || '0')) : 5.1)) : 0;
       if(d.vf){ const nv = 1.1 * VT; els.push(diodeElem(A(0), A(1), (d.ifm || 0.1) / Math.exp(d.vf / nv), nv, inst, 'D')); }
       else els.push(diodeElem(A(0), A(1), zener ? 1e-12 : 7.7e-9, zener ? 1.0 * VT * 1.6 : 1.8 * VT, inst, 'D', Vz));
       continue;
@@ -542,12 +542,13 @@ function buildElements(net, dt){
       const n = d.channelsN, iv = findPin(inst, /^VCC$/), ig = findPin(inst, /^GND$/);
       const rs = R[id] = R[id] || { on: [] };
       const vs = pv(A(iv)) - pv(A(ig));
-      els.push(res(A(iv), A(ig), 5 / (0.015 + 0.07 * n), inst, 'coil'));
+      const Vc = +p.coilV || 5;
+      els.push(res(A(iv), A(ig), Vc / (0.015 + 0.07 * n), inst, 'coil'));
       const lowActive = !p.activeHigh;
       for(let c = 1; c <= n; c++){
         const ii = findPin(inst, new RegExp('^IN' + c + '$')), com = findPin(inst, new RegExp('^COM' + c + '$')), no = findPin(inst, new RegExp('^NO' + c + '$')), nc = findPin(inst, new RegExp('^NC' + c + '$'));
         const sig = pv(A(ii)) - pv(A(ig));
-        rs.on[c - 1] = vs > 3.2 && (lowActive ? sig < 1.0 : sig > 2.0);
+        rs.on[c - 1] = vs > 0.64 * Vc && (lowActive ? sig < 0.2 * Vc : sig > 0.4 * Vc);
         // módulos reais têm entrada ativa-BAIXA com pull-up interno: o relé só fecha ao levar IN a 0 V
         els.push(thev(A(ii), A(iv), vs, 2000, inst, 'in' + c));
         els.push(res(A(com), A(no), rs.on[c - 1] ? 0.05 : 1e9, inst, 'NO' + c));
@@ -594,6 +595,13 @@ function buildElements(net, dt){
       const pos = st.sw ? 1 : 0;
       els.push(res(A(0), A(1), pos ? 0.03 : 1e9, inst, 'NO'));
       els.push(res(A(0), A(2), pos ? 1e9 : 0.03, inst, 'NC'));
+      continue;
+    }
+    if(d.kind === 'rocker'){
+      const on = st.sw ? 1 : 0, n = d.pinNames.length;
+      if(n === 2) els.push(res(A(0), A(1), on ? 0.03 : 1e9, inst, 'SW'));
+      else if(n === 3){ els.push(res(A(0), A(1), on ? 0.03 : 1e9, inst, 'NO')); els.push(res(A(0), A(2), on ? 1e9 : 0.03, inst, 'NC')); }
+      else { for(let g = 0; g < 2; g++){ els.push(res(A(g * 3), A(g * 3 + 1), on ? 0.03 : 1e9, inst, 'NO' + g)); els.push(res(A(g * 3), A(g * 3 + 2), on ? 1e9 : 0.03, inst, 'NC' + g)); } }
       continue;
     }
     if(d.kind === 'dip'){
@@ -1008,10 +1016,12 @@ function applyPhysics(dt){
     if(!cs) continue;
     const R = CIR.react;
     // capacitores / indutores: atualiza estado
-    if(d.id === 'cap' && cs.Vd.cap != null) R[inst.id].v = cs.Vd.cap;
+    if(d.kind === 'cap' && !d.id2 && cs.Vd.cap != null && R[inst.id]){ R[inst.id].v = cs.Vd.cap;
+      if(d.id !== 'crystal_16mhz' && d.id !== 'varistor'){ const vm = +inst.props.vmax || 25, V = cs.Vd.cap, pol = /electrolytic|tantalum/.test(inst.props.ctype || 'electrolytic');
+        thermal(inst, Math.max(Math.abs(V) / vm, pol && V < -1 ? 1.6 : 0), dt, 1.2, pol && V < -1 ? 'polaridade invertida' : 'tensão ' + V.toFixed(1) + ' V acima de ' + vm + ' V'); } }
     if(d.kind === 'scap' && cs.Vd.cap != null) R[inst.id].v = cs.Vd.cap;
-    if(d.id === 'inductor_10uh' && cs.I.L != null) R[inst.id].i = cs.I.L;
-    if(d.id === 'fuse' && R[inst.id] && !R[inst.id].blown && Math.abs(cs.I.fuse || 0) > (+inst.props.rating || 1)){
+    if((d.id === 'inductor_10uh' || d.id2 === 'inductor') && cs.I.L != null && R[inst.id]) R[inst.id].i = cs.I.L;
+    if((d.id === 'fuse' || d.id2 === 'fuse') && R[inst.id] && !R[inst.id].blown && Math.abs(cs.I.fuse || 0) > (+inst.props.rating || 1)){
       R[inst.id].blown = true; st.blown = true; serialOut('💥 Fusível queimou (' + (Math.abs(cs.I.fuse) * 1000).toFixed(0) + ' mA)', 'warn');
     }
     if(d.id === 'triac'){
@@ -1092,12 +1102,12 @@ function applyPhysics(dt){
       st.hot = P > (+inst.props.watt || 0.25) * 0.8;
       thermal(inst, P / (+inst.props.watt || 0.25), dt, 0.8, 'dissipou ' + (P * 1000).toFixed(0) + ' mW (limite ' + ((+inst.props.watt || 0.25) * 1000).toFixed(0) + ' mW)');
     }
-    if(d.id === 'cap'){ inst.props.chargeLevel = clamp(Math.abs(cs.Vd.cap || 0) / 5 * 100, 0, 100); }
+    if(d.kind === 'cap' && !d.id2){ inst.props.chargeLevel = clamp(Math.abs(cs.Vd.cap || 0) / 5 * 100, 0, 100); }
     // sobretensão em módulos
     if(d.cat !== 'power' && d.cat !== 'mcu' && d.cat !== 'board'){
       const s = CIR.supply(inst);
       if(s != null && SIM.on){
-        const vn = d.vcc || 3.3;
+        const vn = (d.kind === 'relayN' && +inst.props.coilV) || d.vcc || 3.3;
         const vmax = d.vmax || (vn <= 3.3 ? 3.9 : vn <= 5 ? 6.0 : vn + 4);
         if(s > vmax && !st.burnt && !(d.kind === 'servo' && s < 8) && d.kind !== 'motor'){
           st.burnt = true;

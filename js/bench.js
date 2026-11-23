@@ -283,6 +283,10 @@ function buildControls(inst, wrap){
     upd();
     c.addEventListener('pointerdown', e => { if(!lockOn()) return; selectInst(inst); st.sw = st.sw ? 0 : 1; upd(); CIRCUIT.request(); e.preventDefault(); });
     c.title = 'Clique para alternar';
+  } else if(d.kind === 'rocker'){
+    const c = ctl(wrap, `left:6px;top:4px;width:${W - 12}px;height:${H - 22}px;cursor:pointer;border-radius:4px`, 'rk-hit');
+    c.addEventListener('pointerdown', e => { if(!lockOn()) return; selectInst(inst); st.sw = st.sw ? 0 : 1; CIRCUIT.request(); renderBench(); e.preventDefault(); });
+    c.title = 'Clique para ligar / desligar';
   } else if(d.kind === 'dip'){
     const n = 4, cw = (W - 8) / n;
     st.dip = st.dip || Array(n).fill(0);

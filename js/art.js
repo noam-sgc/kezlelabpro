@@ -47,20 +47,21 @@ function artRGB(inst){
 }
 
 /* ---------------- passivos ---------------- */
-function bandsOf(inst){ try { return resBands(inst ? +inst.props.value || 220 : 220); } catch(e){ return ['#f00', '#f00', '#a52', '#c9a227']; } }
+function bandsOf(inst){ try { if(window.KezlePassives) return window.KezlePassives.bands(inst).map(b => b[0]); return resBands(inst ? +inst.props.value || 220 : 220); } catch(e){ return ['#f00', '#f00', '#a52', '#c9a227']; } }
 function artRes(inst){
   const d = inst.def, w = d.w, h = d.h, o = RAW(inst), cy = h / 2, id = G();
   const x0 = o[0].x, x1 = o[1].x, bx = x0 + 8, bw = x1 - x0 - 16;
   let s = leg(x0, cy, bx + 2, cy) + leg(x1, cy, bx + bw - 2, cy);
   s += `<rect x="${bx}" y="${cy - 5.5}" width="${bw}" height="11" rx="5" fill="url(#${id})" stroke="#8a6d3b" stroke-width=".7"/>`;
-  const b = bandsOf(inst), bandX = [.2, .36, .52, .8];
-  b.slice(0, 4).forEach((c, i) => { s += `<rect x="${bx + bw * bandX[i] - 1.4}" y="${cy - 5.4}" width="2.8" height="10.8" fill="${c}" opacity=".95"/>`; });
+  const b = bandsOf(inst), bandX = b.length > 4 ? [.15, .27, .39, .55, .82] : [.2, .36, .52, .8];
+  b.slice(0, b.length).forEach((c, i) => { s += `<rect x="${bx + bw * bandX[i] - 1.4}" y="${cy - 5.4}" width="2.8" height="10.8" fill="${c}" opacity=".95"/>`; });
   s += `<rect x="${bx + 3}" y="${cy - 4.5}" width="${bw - 6}" height="2.6" rx="1.3" fill="#fff" opacity=".28"/>`;
   return wrap(d, s, `<linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e9cf9c"/><stop offset=".5" stop-color="#d4b277"/><stop offset="1" stop-color="#a98650"/></linearGradient>`);
 }
 function artCap(inst){
   const d = inst.def, w = d.w, h = d.h, o = RAW(inst), cy = h / 2, id = G(), x0 = o[0].x, x1 = o[1].x;
-  const nm = d.id + ' ' + d.n;
+  const ct = (inst && inst.props && inst.props.ctype) || '';
+  const nm = d.id + ' ' + d.n + ' ' + (ct === 'electrolytic' ? '' : ct);
   let s = '';
   if(d.id2 === 'inductor'){
     s += leg(x0, cy, x0 + 10, cy) + leg(x1, cy, x1 - 10, cy);
@@ -81,13 +82,13 @@ function artCap(inst){
   if(d.id === 'varistor' || /ceramic/.test(nm)){
     s += leg(x0, cy, w / 2 - 6, cy) + leg(x1, cy, w / 2 + 6, cy);
     const col = d.id === 'varistor' ? '#2563eb' : '#f59e0b';
-    s += `<circle cx="${w / 2}" cy="${cy}" r="${Math.min(10, h / 2 - 1)}" fill="url(#${id})" stroke="${shade(col, .6)}"/><text x="${w / 2}" y="${cy + 2.2}" text-anchor="middle" font-size="5.5" fill="#1f2937" font-family="monospace">${d.id === 'varistor' ? 'MOV' : (inst.props.capVal || '') + ((inst.props.capUnit || '').slice(0, 1))}</text>`;
+    s += `<circle cx="${w / 2}" cy="${cy}" r="${Math.min(10, h / 2 - 1)}" fill="url(#${id})" stroke="${shade(col, .6)}"/><text x="${w / 2}" y="${cy + 2.2}" text-anchor="middle" font-size="5.5" fill="#1f2937" font-family="monospace">${d.id === 'varistor' ? 'MOV' : (inst.props.capVal || 100) + ((inst.props.capUnit || 'µF').slice(0, 1))}</text>`;
     return wrap(d, s, `<radialGradient id="${id}" cx=".4" cy=".35" r=".8"><stop offset="0" stop-color="${shade(col, 1.3)}"/><stop offset="1" stop-color="${shade(col, .75)}"/></radialGradient>`);
   }
   if(/tantalum|film/.test(nm)){
     const col = /tantalum/.test(nm) ? '#eab308' : '#f97316';
     s += leg(x0, cy, x0 + 8, cy) + leg(x1, cy, x1 - 8, cy);
-    s += `<rect x="${x0 + 7}" y="${cy - 7}" width="${x1 - x0 - 14}" height="14" rx="3" fill="${col}" stroke="${shade(col, .6)}"/><text x="${w / 2}" y="${cy + 2.3}" text-anchor="middle" font-size="5.5" fill="#451a03" font-family="monospace">${inst.props.capVal || ''}${(inst.props.capUnit || '').slice(0, 1)}</text>`;
+    s += `<rect x="${x0 + 7}" y="${cy - 7}" width="${x1 - x0 - 14}" height="14" rx="3" fill="${col}" stroke="${shade(col, .6)}"/><text x="${w / 2}" y="${cy + 2.3}" text-anchor="middle" font-size="5.5" fill="#451a03" font-family="monospace">${inst.props.capVal || 100}${(inst.props.capUnit || 'µF').slice(0, 1)}</text>`;
     return wrap(d, s);
   }
   // eletrolítico axial
@@ -158,6 +159,22 @@ function artSwitch(inst){
   s += `<rect x="4" y="3" width="${w - 8}" height="${h - 21}" rx="3" fill="#374151" stroke="#000"/><rect x="${w / 2 - 17}" y="${(h - 18) / 2 - 7}" width="34" height="14" rx="3" fill="#111827" stroke="#000"/>`;
   s += `<text x="${w / 2}" y="${h - 22}" text-anchor="middle" font-size="5" fill="#9ca3af" font-family="monospace">ON · OFF</text>`;
   return wrap(d, s);
+}
+function artRocker(inst){
+  const d = inst.def, w = d.w, h = d.h, o = RAW(inst), on = !!inst.state.sw, id = G();
+  let s = '';
+  o.forEach(p => { s += leg(p.x, h - 16, p.x, p.y); });
+  const bw = w - 8, bh = h - 20;
+  s += `<rect x="4" y="3" width="${bw}" height="${bh}" rx="4" fill="#111827" stroke="#000" stroke-width="1"/>`;
+  s += `<rect x="7" y="6" width="${bw - 6}" height="${bh - 6}" rx="3" fill="#1f2937"/>`;
+  // tecla basculante: lado ligado fica vermelho e "afundado"
+  const kx = 10, kw = bw - 12, ky = 9, kh = bh - 12;
+  s += `<g><path d="M${kx},${ky + 2} L${kx + kw},${ky} L${kx + kw},${ky + kh} L${kx},${ky + kh - 2} Z" fill="url(#${id})" stroke="#450a0a"/>`;
+  s += `<rect x="${kx + (on ? kw * 0.52 : 2)}" y="${ky + 3}" width="${kw * 0.44}" height="${kh - 6}" rx="2" fill="${on ? '#fecaca' : '#7f1d1d'}" opacity="${on ? .9 : .55}"/></g>`;
+  s += `<text x="${kx + kw * 0.27}" y="${ky + kh / 2 + 3}" text-anchor="middle" font-size="9" font-weight="700" fill="#fde2e2" font-family="monospace">O</text>`;
+  s += `<text x="${kx + kw * 0.75}" y="${ky + kh / 2 + 3}" text-anchor="middle" font-size="9" font-weight="700" fill="${on ? '#7f1d1d' : '#fde2e2'}" font-family="monospace">I</text>`;
+  if(on) s += `<rect x="3" y="2" width="${bw + 2}" height="${bh + 2}" rx="5" fill="#ef4444" opacity=".12"/>`;
+  return wrap(d, s, `<linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${on ? '#ef4444' : '#b91c1c'}"/><stop offset="1" stop-color="#7f1d1d"/></linearGradient>`);
 }
 function artDip(inst){
   const d = inst.def, w = d.w, h = d.h, o = RAW(inst);
@@ -349,6 +366,7 @@ window.svgFor = function(inst){
     if(d.kind === 'ic' || d.kind === 'ne555' || d.kind === 'opamp' || d.kind === 'lm317' || d.id === 'optocoupler') return artIC(inst);
     if(d.kind === 'btn') return artButton(inst);
     if(d.kind === 'sw') return artSwitch(inst);
+    if(d.kind === 'rocker') return artRocker(inst);
     if(d.kind === 'dip') return artDip(inst);
     if(d.kind === 'pot') return artPot(inst);
     if(d.kind === 'enc') return artEnc(inst);
